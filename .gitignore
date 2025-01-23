@@ -1,0 +1,18 @@
+# Ignorar directorios generados por npm y yarn
+node_modules/
+yarn.lock
+package-lock.json
+
+# Opcional: Ignorar cualquier carpeta específica para compilación o logs
+build/
+.next/
+.nuxt/
+dist/
+logs/
+
+
+.env
+.env.production
+node_modules
+# Keep environment variables out of version control
+.env
