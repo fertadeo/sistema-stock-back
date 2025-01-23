@@ -1,10 +1,6 @@
 import { AppDataSource } from '../config/database';
 import { Clientes } from '../entities/Clientes';
-import { Pedido } from '../entities/Pedido';
-
 const clienteRepository = AppDataSource.getRepository(Clientes);
-const pedidoRepository = AppDataSource.getRepository(Pedido);
-
 export const clientesService = {
   getAllClientes: async (): Promise<Clientes[]> => {
     return await clienteRepository.find();
@@ -41,10 +37,7 @@ export const clientesService = {
 
   deleteCliente: async (id: number): Promise<void> => {
     try {
-      // Eliminar pedidos asociados al cliente
-      await pedidoRepository.delete({ cliente: { id } });
-
-      // Ahora se puede eliminar el cliente
+        // Ahora se puede eliminar el cliente
       const clienteToDelete = await clienteRepository.findOneBy({ id });
 
       if (!clienteToDelete) {

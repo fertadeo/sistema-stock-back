@@ -23,7 +23,6 @@ export const importarProductos = async (req: Request, res: Response) => {
       nuevoProducto.precio = producto.Precio;
       nuevoProducto.divisa = producto.Divisa;
       nuevoProducto.descuento = parseFloat(producto.Descuento.replace('%', ''));
-      nuevoProducto.proveedor_id = producto.proveedor_id; 
 
       console.log('Guardando producto:', nuevoProducto);
 
@@ -74,7 +73,6 @@ export const obtenerProductoPorId = async (req: Request, res: Response) => {
       nombreProducto: producto.nombreProducto,
       descripcion: producto.descripcion,
       precio: producto.precio,
-      nombreProveedores: producto.proveedor ? producto.proveedor.nombreProveedores : null,
     };
 
     res.json(resultado);
@@ -96,22 +94,7 @@ export const obtenerProductosPorProveedor = async (req: Request, res: Response) 
     return res.status(400).json({ message: 'ID de proveedor inválido' });
   }
 
-  try {
-    // Buscar productos por proveedor
-    const productos = await productoRepository.find({
-      where: { proveedor: { id: proveedorId } },
-      relations: ['proveedor'],
-    });
-
-    if (productos.length === 0) {
-      return res.status(404).json({ message: 'No se encontraron productos para el proveedor especificado' });
-    }
-
-    return res.status(200).json({ productos });
-  } catch (error) {
-    console.error('Error al obtener productos por proveedor:', error);
-    return res.status(500).json({ message: 'Error al obtener productos por proveedor' });
-  }
+  
 };
 
 // Nueva función para obtener el último ID de los productos
@@ -165,7 +148,6 @@ export const actualizarProducto = async (req: Request, res: Response) => {
     producto.rubro_id = rubro_id ?? producto.rubro_id;
     producto.sistema_id = sistema_id ?? producto.sistema_id;
     producto.disponible = disponible ?? producto.disponible;
-    producto.proveedor = proveedor_id ?? producto.proveedor;
 
     await productoRepository.save(producto);
 
@@ -249,7 +231,6 @@ export const crearProducto = async (req: Request, res: Response) => {
     nuevoProducto.rubro_id = rubro_id;
     nuevoProducto.sistema_id = sistema_id;
     nuevoProducto.disponible = disponible;
-    nuevoProducto.proveedor = proveedor_id;
 
     // Guardar el nuevo producto en la base de datos
     await AppDataSource.getRepository(Producto).save(nuevoProducto);
