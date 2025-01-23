@@ -9,6 +9,8 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/userRoutes';
 import productosRoutes from './routes/productRoutes';
 import proveedoresRoutes from './routes/proveedoresRoutes';
+import ventaRoutes from "./routes/ventaRoutes";
+import repartidorRoutes from "./routes/repartidorRoutes";
 
 
 
@@ -26,6 +28,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/productos', productosRoutes);
 app.use('/api/proveedores', proveedoresRoutes);
+app.use("/api/ventas-resumen", ventaRoutes);
+app.use("/api/repartidores", repartidorRoutes);
 
 
 
