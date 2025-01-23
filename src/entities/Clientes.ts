@@ -19,7 +19,6 @@ export class Clientes {
 
   @Column()
     direccion: string = '' ;
-    pedidos: any;
 
   
 }

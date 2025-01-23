@@ -13,11 +13,13 @@
   "author": "Fer Tadeo",
   "license": "ISC",
   "dependencies": {
+    "@types/dotenv": "^8.2.3",
     "@types/node": "^20.14.9",
     "bcrypt": "^5.1.1",
     "cookie": "^0.6.0",
     "cors": "^2.8.5",
     "cortinova-sistema-backend": "file:",
+    "dotenv": "^16.4.7",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.10.1",

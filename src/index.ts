@@ -12,6 +12,7 @@ import proveedoresRoutes from './routes/proveedoresRoutes';
 
 
 
+
 const app = express();
 const port = 8080;
 
@@ -25,6 +26,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/productos', productosRoutes);
 app.use('/api/proveedores', proveedoresRoutes);
+
 
 
 // Rutas adicionales
