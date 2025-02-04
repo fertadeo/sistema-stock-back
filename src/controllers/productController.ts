@@ -126,8 +126,7 @@ export const obtenerUltimoIdProducto = async (req: Request, res: Response) => {
 // Función para actualizar un producto existente
 export const actualizarProducto = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { nombreProducto, cantidad_stock, precio, disponible } = req.body;
-
+  const { nombreProducto, cantidadStock, precioPublico, precioRevendedor, descripcion } = req.body;
 
   const productId = Number(id);
   if (isNaN(productId) || productId <= 0) {
@@ -140,14 +139,20 @@ export const actualizarProducto = async (req: Request, res: Response) => {
     if (!producto) {
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
-    producto.nombreProducto = nombreProducto ?? producto.nombreProducto;
-    producto.precioPublico =  producto.precioPublico;
-    producto.precioRevendedor =  producto.precioRevendedor;
 
+    // Actualizar solo los campos que vienen en el request
+    if (nombreProducto !== undefined) producto.nombreProducto = nombreProducto;
+    if (cantidadStock !== undefined) producto.cantidadStock = cantidadStock;
+    if (precioPublico !== undefined) producto.precioPublico = precioPublico;
+    if (precioRevendedor !== undefined) producto.precioRevendedor = precioRevendedor;
+    if (descripcion !== undefined) producto.descripcion = descripcion;
 
     await productoRepository.save(producto);
 
-    return res.status(200).json({ message: 'Producto actualizado correctamente', producto });
+    return res.status(200).json({ 
+      message: 'Producto actualizado correctamente', 
+      producto 
+    });
   } catch (error) {
     console.error('Error al actualizar el producto:', error);
     res.status(500).json({ message: 'Error al actualizar el producto' });
@@ -203,6 +208,9 @@ export const crearProducto = async (req: Request, res: Response) => {
     nombreProducto,
     precioPublico,
     precioRevendedor,
+    cantidadStock,
+    descripcion
+
 
   } = req.body;
 
@@ -213,6 +221,9 @@ export const crearProducto = async (req: Request, res: Response) => {
     nuevoProducto.nombreProducto = nombreProducto;
     nuevoProducto.precioPublico = precioPublico;
     nuevoProducto.precioRevendedor = precioRevendedor;
+    nuevoProducto.cantidadStock = cantidadStock;
+    nuevoProducto.descripcion = descripcion;
+
 
 
 
