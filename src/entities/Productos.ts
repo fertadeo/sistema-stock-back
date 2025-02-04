@@ -9,6 +9,16 @@ export class Productos {
   @Column()
   nombreProducto!: string;
 
+
   @Column()
-  precio!: number;
+  precioPublico!: number;
+
+  @Column()
+  precioRevendedor!: number;
+
+  @Column()
+  cantidadStock!: number;
+
+  @Column()
+  descripcion!: string;
 }

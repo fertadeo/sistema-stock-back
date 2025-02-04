@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
-import { Producto } from '../entities/Producto';
+import { Productos } from '../entities/Productos';
 import { AppDataSource } from '../config/database'; // Configura tu datasource de TypeORM
+
 
 
 // Controlador para importar productos (sin modificaciones)
@@ -14,20 +15,20 @@ export const importarProductos = async (req: Request, res: Response) => {
 
   try {
     for (const producto of productos) {
-      const nuevoProducto = new Producto();
+      const nuevoProducto = new Productos();
       nuevoProducto.id = producto.id;
       nuevoProducto.nombreProducto = producto.Producto;
-      nuevoProducto.cantidad_stock = producto.Cantidad_stock;
-      nuevoProducto.descripcion = producto.Descripción;
-      nuevoProducto.precioCosto = producto.PrecioCosto;
-      nuevoProducto.precio = producto.Precio;
-      nuevoProducto.divisa = producto.Divisa;
-      nuevoProducto.descuento = parseFloat(producto.Descuento.replace('%', ''));
+      nuevoProducto.precioPublico = producto.PrecioPublico;
+      nuevoProducto.precioRevendedor = producto.PrecioRevendedor;
+
+
+
 
       console.log('Guardando producto:', nuevoProducto);
 
-      await AppDataSource.getRepository(Producto).save(nuevoProducto);
+      await AppDataSource.getRepository(Productos).save(nuevoProducto);
     }
+
 
     return res.status(200).json({ message: 'Productos importados correctamente' });
   } catch (error) {
@@ -37,12 +38,13 @@ export const importarProductos = async (req: Request, res: Response) => {
 };
 
 // Obtén el repositorio del producto
-const productoRepository = AppDataSource.getRepository(Producto);
+const productoRepository = AppDataSource.getRepository(Productos);
+
 
 // Función para obtener todos los productos
 export const obtenerTodosLosProductos = async (req: Request, res: Response) => {
   try {
-    const productos = await productoRepository.find({ relations: ['proveedor'] });
+    const productos = await productoRepository.find();
     res.json(productos);
   } catch (error) {
     console.error('Error al obtener todos los productos:', error);
@@ -61,7 +63,6 @@ export const obtenerProductoPorId = async (req: Request, res: Response) => {
   try {
     const producto = await productoRepository.findOne({
       where: { id: productId },
-      relations: ['proveedor'],
     });
 
     if (!producto) {
@@ -71,9 +72,10 @@ export const obtenerProductoPorId = async (req: Request, res: Response) => {
     const resultado = {
       id: producto.id,
       nombreProducto: producto.nombreProducto,
-      descripcion: producto.descripcion,
-      precio: producto.precio,
+      precioPublico: producto.precioPublico,
+      precioRevendedor: producto.precioRevendedor,
     };
+
 
     res.json(resultado);
   } catch (error) {
@@ -86,16 +88,16 @@ export const obtenerProductoPorId = async (req: Request, res: Response) => {
 
 
 
-export const obtenerProductosPorProveedor = async (req: Request, res: Response) => {
-  const { proveedor_id } = req.params;
+// export const obtenerProductosPorProveedor = async (req: Request, res: Response) => {
+//   const { proveedor_id } = req.params;
 
-  const proveedorId = Number(proveedor_id);
-  if (isNaN(proveedorId) || proveedorId <= 0) {
-    return res.status(400).json({ message: 'ID de proveedor inválido' });
-  }
+//   const proveedorId = Number(proveedor_id);
+//   if (isNaN(proveedorId) || proveedorId <= 0) {
+//     return res.status(400).json({ message: 'ID de proveedor inválido' });
+//   }
 
   
-};
+// };
 
 // Nueva función para obtener el último ID de los productos
 export const obtenerUltimoIdProducto = async (req: Request, res: Response) => {
@@ -124,7 +126,8 @@ export const obtenerUltimoIdProducto = async (req: Request, res: Response) => {
 // Función para actualizar un producto existente
 export const actualizarProducto = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { nombreProducto, cantidad_stock, descripcion, precioCosto, precio, divisa, descuento, rubro_id, sistema_id, disponible, proveedor_id } = req.body;
+  const { nombreProducto, cantidad_stock, precio, disponible } = req.body;
+
 
   const productId = Number(id);
   if (isNaN(productId) || productId <= 0) {
@@ -137,17 +140,10 @@ export const actualizarProducto = async (req: Request, res: Response) => {
     if (!producto) {
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
-
     producto.nombreProducto = nombreProducto ?? producto.nombreProducto;
-    producto.cantidad_stock = cantidad_stock ?? producto.cantidad_stock;
-    producto.descripcion = descripcion ?? producto.descripcion;
-    producto.precioCosto = precioCosto ?? producto.precioCosto;
-    producto.precio = precio ?? producto.precio;
-    producto.divisa = divisa ?? producto.divisa;
-    producto.descuento = descuento ?? producto.descuento;
-    producto.rubro_id = rubro_id ?? producto.rubro_id;
-    producto.sistema_id = sistema_id ?? producto.sistema_id;
-    producto.disponible = disponible ?? producto.disponible;
+    producto.precioPublico =  producto.precioPublico;
+    producto.precioRevendedor =  producto.precioRevendedor;
+
 
     await productoRepository.save(producto);
 
@@ -185,10 +181,10 @@ export const actualizarPreciosPorProveedor = async (req: Request, res: Response)
       }
 
       // Actualizar el precio del producto
-      producto.precio = Precio;
+      // producto.precio = Precio;
 
       // Guardar los cambios en la base de datos
-      await productoRepository.save(producto);
+      // await productoRepository.save(producto);
     }
 
     return res.status(200).json({ message: 'Precios actualizados correctamente' });
@@ -205,35 +201,23 @@ export const crearProducto = async (req: Request, res: Response) => {
   const {
     id,
     nombreProducto,
-    cantidad_stock,
-    descripcion,
-    precioCosto,
-    precio,
-    divisa,
-    descuento,
-    rubro_id,
-    sistema_id,
-    disponible,
-    proveedor_id,
+    precioPublico,
+    precioRevendedor,
+
   } = req.body;
 
   try {
     // Crear una instancia de producto
-    const nuevoProducto = new Producto();
+    const nuevoProducto = new Productos();
     nuevoProducto.id = id;
     nuevoProducto.nombreProducto = nombreProducto;
-    nuevoProducto.cantidad_stock = cantidad_stock;
-    nuevoProducto.descripcion = descripcion;
-    nuevoProducto.precioCosto = precioCosto;
-    nuevoProducto.precio = precio;
-    nuevoProducto.divisa = divisa;
-    nuevoProducto.descuento = descuento;
-    nuevoProducto.rubro_id = rubro_id;
-    nuevoProducto.sistema_id = sistema_id;
-    nuevoProducto.disponible = disponible;
+    nuevoProducto.precioPublico = precioPublico;
+    nuevoProducto.precioRevendedor = precioRevendedor;
+
+
 
     // Guardar el nuevo producto en la base de datos
-    await AppDataSource.getRepository(Producto).save(nuevoProducto);
+    await AppDataSource.getRepository(Productos).save(nuevoProducto);
 
     return res.status(201).json({ message: 'Producto creado exitosamente', producto: nuevoProducto });
   } catch (error) {
