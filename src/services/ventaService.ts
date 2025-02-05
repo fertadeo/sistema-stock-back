@@ -1,5 +1,5 @@
 import { AppDataSource } from "../config/database";
-import { Venta } from "../entities/venta";
+import { Venta } from "../entities/Venta";
 import { Between } from "typeorm";
 
 export class VentaService {

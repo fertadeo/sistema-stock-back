@@ -20,5 +20,12 @@ export class Clientes {
   @Column()
     direccion: string = '' ;
 
-  
+  @Column()
+    zona: string = '';
+
+  @Column()
+    fecha_alta: Date = new Date();
+
+  @Column()
+    estado: boolean = true;
 }

@@ -4,7 +4,7 @@ import { User } from '../entities/User';
 import { Clientes } from '../entities/Clientes';
 import { Productos } from '../entities/Productos';
 import dotenv from 'dotenv';
-import { Venta } from '../entities/venta';
+import { Venta } from '../entities/Venta';
 import { Repartidor } from '../entities/Repartidor';
 
 
