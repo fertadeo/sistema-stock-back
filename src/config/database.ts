@@ -13,7 +13,7 @@ import { Repartidor } from '../entities/Repartidor';
 const isProduction = process.env.NODE_ENV === 'production';
 
 dotenv.config({
-  path: isProduction ? '.env.production' : '.env'
+  path: isProduction ? '.env.production' : '.env.development'
 });
 
 
