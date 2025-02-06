@@ -15,7 +15,12 @@ const isProduction = process.env.NODE_ENV === 'production';
 dotenv.config({
   path: isProduction ? '.env.production' : '.env.development'
 });
+// Cargar el archivo .env correcto
+const envFile = isProduction ? '.env.production' : '.env.development';
+dotenv.config({ path: envFile });
 
+console.log(`🟢 Cargando configuración desde: ${envFile}`);
+console.log(`🔹 DATABASE_URL: ${process.env.DATABASE_URL}`);
 
 
 // Configurar las variables de conexión dependiendo del entorno
