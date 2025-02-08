@@ -39,10 +39,10 @@ export const AppDataSource = new DataSource({
 
 
 console.log({
-  DB_HOST: process.env.DB_HOST_DEV,
-  DB_USER: process.env.DB_USER_DEV,
-  DB_PASSWORD: process.env.DB_PASSWORD_DEV,
-  DB_NAME: process.env.DB_NAME_DEV,
+  DB_HOST: isProduction ? process.env.DB_HOST_PROD : process.env.DB_HOST_DEV,
+  DB_USER: isProduction ? process.env.DB_USER_PROD : process.env.DB_USER_DEV,
+  DB_PASSWORD: isProduction ? process.env.DB_PASSWORD_PROD : process.env.DB_PASSWORD_DEV,
+  DB_NAME: isProduction ? process.env.DB_NAME_PROD : process.env.DB_NAME_DEV,
 });
 
 export const initializeDatabase = async () => {
