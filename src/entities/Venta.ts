@@ -6,7 +6,7 @@ export class Venta {
     venta_id!: string;
 
     @Column({ nullable: true })
-    revendedor_id!: string;
+    revendedor_nombre!: string;
 
     @Column({ nullable: true })
     repartidor_id!: string;
