@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, OneToMany } from "typeorm";
 import { Repartidor } from "./Repartidor";
+import { CargaItem } from "./CargaItem";
 
 @Entity('cargas')
 export class Carga {
@@ -13,12 +14,8 @@ export class Carga {
     @JoinColumn({ name: 'repartidor_id' })
     repartidor!: Repartidor;
 
-    @Column('json')
-    items!: {
-        producto_id: number;
-        cantidad: number;
-        nombre_producto: string;
-    }[];
+    @OneToMany(() => CargaItem, item => item.carga, { cascade: true })
+    items!: CargaItem[];
 
     @CreateDateColumn()
     fecha_carga!: Date;

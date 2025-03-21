@@ -6,7 +6,11 @@ import { Productos } from '../entities/Productos';
 import dotenv from 'dotenv';
 import { Venta } from '../entities/Venta';
 import { Repartidor } from '../entities/Repartidor';
-
+import { Carga } from '../entities/Carga';
+import { Descarga } from '../entities/Descarga';
+import { CargaItem } from '../entities/CargaItem';
+import { DescargaEnvases } from '../entities/DescargaEnvases';
+import { EnvasesPrestados } from '../entities/EnvasesPrestados';
 
 
 // Determinar si estamos en modo producción o desarrollo
@@ -33,7 +37,7 @@ export const AppDataSource = new DataSource({
   database: isProduction ? process.env.DB_NAME_PROD : process.env.DB_NAME_DEV,
   synchronize: false,
   logging: false,
-  entities: [User, Clientes, Productos, Venta, Repartidor],
+  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados],
 });
 
 

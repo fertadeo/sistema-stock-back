@@ -52,4 +52,15 @@ export class CargaService {
         carga.estado = estado;
         return await this.cargaRepository.save(carga);
     }
+
+    async obtenerCargasPendientesPorRepartidor(repartidorId: number): Promise<Carga[]> {
+        return await this.cargaRepository.find({
+            where: {
+                repartidor_id: repartidorId,
+                estado: 'pendiente'
+            },
+            relations: ['items', 'repartidor'],
+            order: { fecha_carga: 'DESC' }
+        });
+    }
 } 

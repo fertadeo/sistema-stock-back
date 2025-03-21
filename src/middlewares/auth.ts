@@ -4,15 +4,11 @@ import { Request, Response, NextFunction } from 'express';
 
 dotenv.config();
 
-
 interface AuthRequest extends Request {
   user?: string | jwt.JwtPayload;
 }
 
-
-
-
-const auth = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
 
   if (!token) {

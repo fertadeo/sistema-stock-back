@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { EnvasesPrestados } from './EnvasesPrestados';
 
 @Entity()
 export class Clientes {
@@ -28,4 +29,13 @@ export class Clientes {
 
   @Column()
     estado: boolean = true;
+
+  @Column()
+    repartidor: string = '';
+
+  @Column()
+    dia_reparto: string = '';
+
+  @OneToMany(() => EnvasesPrestados, envase => envase.cliente)
+    envases_prestados!: EnvasesPrestados[];
 }

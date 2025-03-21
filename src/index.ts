@@ -12,6 +12,7 @@ import proveedoresRoutes from './routes/proveedoresRoutes';
 import ventaRoutes from "./routes/ventaRoutes";
 import repartidorRoutes from "./routes/repartidorRoutes";
 import cargaRoutes from './routes/cargaRoutes';
+import descargaRoutes from './routes/descargaRoutes';
 
 
 
@@ -33,6 +34,7 @@ app.use("/api/ventas-resumen", ventaRoutes);
 app.use("/api/ventas", ventaRoutes);
 app.use("/api/repartidores", repartidorRoutes);
 app.use("/api/cargas", cargaRoutes);
+app.use('/api/descargas', descargaRoutes);
 
 
 

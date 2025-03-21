@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { clientesService } from '../services/clienteService';
 import { Clientes } from '../entities/Clientes';
 import { AppDataSource } from '../config/database';
+import { EnvasesPrestados } from '../entities/EnvasesPrestados';
 
 const clienteRepository = AppDataSource.getRepository(Clientes);
 
@@ -58,12 +59,12 @@ export const getNextClienteId = async (req: Request, res: Response) => {
 
 export const createCliente = async (req: Request, res: Response) => {
   try {
-    const nuevoCliente = req.body;
+    const { envases_prestados, ...datosCliente } = req.body;
     
-    // Si el DNI está vacío o no se proporciona, no lo verifiques
-    if (nuevoCliente.dni) {
+    // Verificación del DNI si existe
+    if (datosCliente.dni) {
       const clienteExistente = await clienteRepository.findOne({
-        where: { dni: nuevoCliente.dni }
+        where: { dni: datosCliente.dni }
       });
 
       if (clienteExistente) {
@@ -71,8 +72,30 @@ export const createCliente = async (req: Request, res: Response) => {
       }
     }
 
-    const clienteCreado = await clienteRepository.save(nuevoCliente);
-    res.status(201).json(clienteCreado);
+    // Crear el cliente
+    const clienteCreado = await clienteRepository.save(datosCliente);
+
+    // Si hay envases prestados, los registramos
+    if (envases_prestados && Array.isArray(envases_prestados) && envases_prestados.length > 0) {
+      const envaseRepository = AppDataSource.getRepository(EnvasesPrestados);
+      
+      const envasesARegistrar = envases_prestados.map(envase => ({
+        cliente_id: clienteCreado.id,
+        tipo_producto: envase.tipo_producto,
+        capacidad: envase.capacidad,
+        cantidad: envase.cantidad
+      }));
+
+      await envaseRepository.save(envasesARegistrar);
+    }
+
+    // Obtener el cliente con sus envases prestados
+    const clienteConEnvases = await clienteRepository.findOne({
+      where: { id: clienteCreado.id },
+      relations: ['envases_prestados']
+    });
+
+    res.status(201).json(clienteConEnvases);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error al crear el cliente' });
@@ -105,4 +128,52 @@ export const deleteCliente = async (req: Request, res: Response) => {
     console.error('Error al eliminar el cliente:', error);
     res.status(500).json({ message: 'Error al eliminar el cliente' });
   }
+};
+
+export const prestarEnvases = async (req: Request, res: Response) => {
+    try {
+        const { cliente_id, tipo_producto, capacidad, cantidad } = req.body;
+
+        // Verificar que el cliente existe
+        const cliente = await clienteRepository.findOne({
+            where: { id: cliente_id }
+        });
+
+        if (!cliente) {
+            return res.status(404).json({ message: 'Cliente no encontrado' });
+        }
+
+        const envasesPrestados = new EnvasesPrestados();
+        envasesPrestados.cliente_id = cliente_id;
+        envasesPrestados.tipo_producto = tipo_producto;
+        envasesPrestados.capacidad = capacidad;
+        envasesPrestados.cantidad = cantidad;
+
+        const resultado = await AppDataSource
+            .getRepository(EnvasesPrestados)
+            .save(envasesPrestados);
+
+        res.status(201).json(resultado);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al registrar los envases prestados' });
+    }
+};
+
+export const getEnvasesPrestadosPorCliente = async (req: Request, res: Response) => {
+    try {
+        const cliente_id = parseInt(req.params.id);
+        
+        const envases = await AppDataSource
+            .getRepository(EnvasesPrestados)
+            .find({
+                where: { cliente_id },
+                order: { fecha_prestamo: 'DESC' }
+            });
+
+        res.json(envases);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error al obtener los envases prestados' });
+    }
 };

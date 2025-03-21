@@ -42,4 +42,17 @@ export class CargaController {
             });
         }
     }
+
+    obtenerCargasPendientesPorRepartidor = async (req: Request, res: Response) => {
+        try {
+            const { repartidorId } = req.params;
+            const cargas = await this.cargaService.obtenerCargasPendientesPorRepartidor(parseInt(repartidorId));
+            res.json(cargas);
+        } catch (error) {
+            res.status(500).json({
+                message: "Error al obtener las cargas pendientes",
+                error: (error as Error).message
+            });
+        }
+    }
 } 
