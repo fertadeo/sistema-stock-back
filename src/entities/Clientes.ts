@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { EnvasesPrestados } from './EnvasesPrestados';
+import { Zona } from './Zona';
 
 @Entity()
 export class Clientes {
@@ -19,10 +20,11 @@ export class Clientes {
     telefono: string = '';
 
   @Column()
-    direccion: string = '' ;
+    direccion: string = '';
 
-  @Column()
-    zona: string = '';
+  @ManyToOne(() => Zona)
+  @JoinColumn({ name: 'zona' })
+    zona!: Zona;
 
   @Column()
     fecha_alta: Date = new Date();

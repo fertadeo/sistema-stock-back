@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Clientes } from './Clientes';
+import { Productos } from './Productos';
 
 @Entity()
 export class EnvasesPrestados {
@@ -13,8 +14,15 @@ export class EnvasesPrestados {
     @Column()
     cliente_id!: number;
 
+    @ManyToOne(() => Productos)
+    @JoinColumn({ name: 'producto_id' })
+    producto!: Productos;
+
     @Column()
-    tipo_producto!: string; // 'AGUA' o 'SODA'
+    producto_id!: number;
+
+    @Column()
+    producto_nombre!: string;
 
     @Column()
     capacidad!: number; // en litros

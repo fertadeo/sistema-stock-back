@@ -11,6 +11,7 @@ import { Descarga } from '../entities/Descarga';
 import { CargaItem } from '../entities/CargaItem';
 import { DescargaEnvases } from '../entities/DescargaEnvases';
 import { EnvasesPrestados } from '../entities/EnvasesPrestados';
+import { Zona } from '../entities/Zona';
 
 
 // Determinar si estamos en modo producción o desarrollo
@@ -37,7 +38,7 @@ export const AppDataSource = new DataSource({
   database: isProduction ? process.env.DB_NAME_PROD : process.env.DB_NAME_DEV,
   synchronize: false,
   logging: false,
-  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados],
+  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona],
 });
 
 

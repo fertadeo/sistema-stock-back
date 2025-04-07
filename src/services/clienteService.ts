@@ -2,8 +2,35 @@ import { AppDataSource } from '../config/database';
 import { Clientes } from '../entities/Clientes';
 const clienteRepository = AppDataSource.getRepository(Clientes);
 export const clientesService = {
-  getAllClientes: async (): Promise<Clientes[]> => {
-    return await clienteRepository.find();
+  getAllClientes: async (): Promise<any[]> => {
+    const clientes = await clienteRepository.find({
+      relations: ['envases_prestados', 'zona']
+    });
+    
+    // Transformar la respuesta para mantener compatibilidad con el frontend
+    return clientes.map(cliente => {
+      // Crear un nuevo objeto con los datos del cliente
+      const clienteTransformado: any = {
+        id: cliente.id,
+        dni: cliente.dni,
+        nombre: cliente.nombre,
+        email: cliente.email,
+        telefono: cliente.telefono,
+        direccion: cliente.direccion,
+        fecha_alta: cliente.fecha_alta,
+        estado: cliente.estado,
+        repartidor: cliente.repartidor,
+        dia_reparto: cliente.dia_reparto,
+        envases_prestados: cliente.envases_prestados || []
+      };
+      
+      // Extraer solo el id de la zona si existe
+      if (cliente.zona) {
+        clienteTransformado.zona = cliente.zona.id;
+      }
+      
+      return clienteTransformado;
+    });
   },
 
   createCliente: async (clienteData: Partial<Clientes>): Promise<Clientes> => {
@@ -37,7 +64,6 @@ export const clientesService = {
 
   deleteCliente: async (id: number): Promise<void> => {
     try {
-        // Ahora se puede eliminar el cliente
       const clienteToDelete = await clienteRepository.findOneBy({ id });
 
       if (!clienteToDelete) {
