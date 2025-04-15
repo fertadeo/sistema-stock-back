@@ -135,37 +135,59 @@ export const descargaController = {
           'repartidor', 
           'carga', 
           'carga.items',
-          'carga.items.producto'  // Agregamos esta relación para acceder al precio
+          'carga.items.producto'
         ]
       });
 
-      // Transformamos la respuesta para incluir el precio total
-      const descargasConPrecio = descargas.map(descarga => {
-        // Calculamos el precio total de la venta
-        const precioTotal = descarga.carga.items.reduce((total, item) => {
-          const productosDevueltos = Array.isArray(descarga.productos_devueltos) 
-            ? descarga.productos_devueltos 
-            : [];
-          
-          const devuelto = productosDevueltos.find(
-            (p: { producto_id: number; cantidad: number }) => 
-            p.producto_id === item.producto_id
-          );
-          
+      // Transformamos la respuesta con el nuevo formato
+      const descargasFormateadas = descargas.map(descarga => {
+        // Calculamos el detalle de productos vendidos
+        const productosDetalle = descarga.carga.items.map(item => {
+          const devuelto = Array.isArray(descarga.productos_devueltos)
+            ? descarga.productos_devueltos.find(
+                (p: { producto_id: number; cantidad: number }) => 
+                p.producto_id === item.producto_id
+              )
+            : null;
+
           const cantidadDevuelta = devuelto ? devuelto.cantidad : 0;
-          const vendidos = item.cantidad - cantidadDevuelta;
-          
-          return total + (vendidos * item.producto.precioPublico);
-        }, 0);
+          const cantidadVendida = item.cantidad - cantidadDevuelta;
+          const subtotal = cantidadVendida * item.producto.precioPublico;
+
+          return {
+            producto_id: item.producto_id,
+            nombre: item.producto.nombreProducto,
+            cantidad_cargada: item.cantidad,
+            cantidad_devuelta: cantidadDevuelta,
+            cantidad_vendida: cantidadVendida,
+            precio_unitario: item.producto.precioPublico,
+            subtotal: subtotal
+          };
+        });
+
+        // Calculamos el monto total sumando los subtotales
+        const montoTotal = productosDetalle.reduce((total, prod) => 
+          total + prod.subtotal, 0
+        );
 
         return {
-          ...descarga,
-          precio_total_venta: precioTotal,
-          estado_cuenta: descarga.estado_cuenta || 'pendiente'
+          id: descarga.id,
+          fecha_descarga: descarga.fecha_descarga,
+          fecha_carga: descarga.carga.fecha_carga,
+          estado_cuenta: descarga.estado_cuenta || 'pendiente',
+          repartidor: {
+            id: descarga.repartidor.id,
+            nombre: descarga.repartidor.nombre
+          },
+          productos_detalle: productosDetalle,
+          totales: {
+            monto_total: montoTotal
+          },
+          observaciones: descarga.observaciones
         };
       });
 
-      res.json(descargasConPrecio);
+      res.json(descargasFormateadas);
     } catch (error) {
       console.error('Error al obtener descargas del repartidor:', error);
       res.status(500).json({ message: 'Error al obtener las descargas del repartidor' });
