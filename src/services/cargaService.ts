@@ -13,7 +13,7 @@ export class CargaService {
             cantidad: number;
             nombre_producto: string;
         }[];
-        fecha: string;
+        fecha?: string;
     }): Promise<Carga> {
         // Verificar que el repartidor existe
         await this.repartidorService.obtenerRepartidorPorId(data.repartidor_id.toString());
@@ -23,7 +23,6 @@ export class CargaService {
         if (data.fecha) {
             // Si la fecha incluye hora, usarla tal cual
             if (data.fecha.includes('T')) {
-                // La base de datos ya maneja la zona horaria de Argentina
                 fechaCarga = new Date(data.fecha);
             } else {
                 // Parsear la fecha manualmente para evitar problemas de zona horaria
@@ -46,7 +45,13 @@ export class CargaService {
                 fechaCarga = fechaSeleccionada;
             }
         } else {
+            // Si no se proporciona fecha, usar la fecha y hora actual
             fechaCarga = new Date();
+        }
+
+        // Verificar que la fecha es válida
+        if (!(fechaCarga instanceof Date) || isNaN(fechaCarga.getTime())) {
+            throw new Error('La fecha proporcionada no es válida');
         }
 
         const carga = this.cargaRepository.create({
