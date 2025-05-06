@@ -23,11 +23,12 @@ export class CargaService {
         if (data.fecha) {
             // Si la fecha incluye hora, usarla tal cual
             if (data.fecha.includes('T')) {
+                // La base de datos ya maneja la zona horaria de Argentina
                 fechaCarga = new Date(data.fecha);
             } else {
                 // Parsear la fecha manualmente para evitar problemas de zona horaria
                 const [year, month, day] = data.fecha.split('-').map(Number);
-                const fechaSeleccionada = new Date(year, month - 1, day); // month - 1 porque en JS los meses van de 0 a 11
+                const fechaSeleccionada = new Date(year, month - 1, day);
                 const hoy = new Date();
                 
                 // Comparar solo el día, mes y año
@@ -57,15 +58,31 @@ export class CargaService {
         return await this.cargaRepository.save(carga);
     }
 
-    async obtenerCargasPorRepartidor(repartidorId: number): Promise<Carga[]> {
-        return await this.cargaRepository.find({
+    async obtenerCargasPorRepartidor(repartidorId: number): Promise<any[]> {
+        const cargas = await this.cargaRepository.find({
             where: { repartidor_id: repartidorId },
             order: { fecha_carga: 'DESC' },
             relations: ['repartidor']
         });
+
+        return cargas.map(carga => {
+            const year = carga.fecha_carga.getFullYear();
+            const month = String(carga.fecha_carga.getMonth() + 1).padStart(2, '0');
+            const day = String(carga.fecha_carga.getDate()).padStart(2, '0');
+            const hours = String(carga.fecha_carga.getHours()).padStart(2, '0');
+            const minutes = String(carga.fecha_carga.getMinutes()).padStart(2, '0');
+            const seconds = String(carga.fecha_carga.getSeconds()).padStart(2, '0');
+            
+            const fechaFormateada = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            
+            return {
+                ...carga,
+                fecha_carga: fechaFormateada
+            };
+        });
     }
 
-    async obtenerCarga(id: number): Promise<Carga> {
+    async obtenerCarga(id: number): Promise<any> {
         const carga = await this.cargaRepository.findOne({
             where: { id },
             relations: ['repartidor']
@@ -75,7 +92,27 @@ export class CargaService {
             throw new Error('Carga no encontrada');
         }
 
-        return carga;
+        // Debug de la fecha
+        console.log('Fecha original:', carga.fecha_carga);
+        console.log('Fecha ISO:', carga.fecha_carga.toISOString());
+        console.log('Fecha UTC:', carga.fecha_carga.toUTCString());
+        console.log('Fecha Local:', carga.fecha_carga.toString());
+        
+        // Obtener los componentes de la fecha
+        const year = carga.fecha_carga.getFullYear();
+        const month = String(carga.fecha_carga.getMonth() + 1).padStart(2, '0');
+        const day = String(carga.fecha_carga.getDate()).padStart(2, '0');
+        const hours = String(carga.fecha_carga.getHours()).padStart(2, '0');
+        const minutes = String(carga.fecha_carga.getMinutes()).padStart(2, '0');
+        const seconds = String(carga.fecha_carga.getSeconds()).padStart(2, '0');
+        
+        const fechaFormateada = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        console.log('Fecha formateada manualmente:', fechaFormateada);
+        
+        return {
+            ...carga,
+            fecha_carga: fechaFormateada
+        };
     }
 
     async actualizarEstadoCarga(id: number, estado: 'completada' | 'cancelada'): Promise<Carga> {
@@ -84,14 +121,30 @@ export class CargaService {
         return await this.cargaRepository.save(carga);
     }
 
-    async obtenerCargasPendientesPorRepartidor(repartidorId: number): Promise<Carga[]> {
-        return await this.cargaRepository.find({
+    async obtenerCargasPendientesPorRepartidor(repartidorId: number): Promise<any[]> {
+        const cargas = await this.cargaRepository.find({
             where: {
                 repartidor_id: repartidorId,
                 estado: 'pendiente'
             },
             relations: ['items', 'repartidor'],
             order: { fecha_carga: 'DESC' }
+        });
+
+        return cargas.map(carga => {
+            const year = carga.fecha_carga.getFullYear();
+            const month = String(carga.fecha_carga.getMonth() + 1).padStart(2, '0');
+            const day = String(carga.fecha_carga.getDate()).padStart(2, '0');
+            const hours = String(carga.fecha_carga.getHours()).padStart(2, '0');
+            const minutes = String(carga.fecha_carga.getMinutes()).padStart(2, '0');
+            const seconds = String(carga.fecha_carga.getSeconds()).padStart(2, '0');
+            
+            const fechaFormateada = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            
+            return {
+                ...carga,
+                fecha_carga: fechaFormateada
+            };
         });
     }
 
