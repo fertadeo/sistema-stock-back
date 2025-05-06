@@ -52,4 +52,7 @@ export class VentaCerrada {
         enum: ['Rendicion final pendiente', 'Finalizado'] 
     })
     estado!: string;
+
+    @Column({ type: 'varchar', length: 50, nullable: true })
+    grupo_cierre?: string;
 } 

@@ -9,5 +9,6 @@ router.get("/repartidor/:repartidorId", cargaController.obtenerPorRepartidor);
 router.get("/pendientes/repartidor/:repartidorId", cargaController.obtenerCargasPendientesPorRepartidor);
 router.patch("/:id/estado", cargaController.actualizarEstado);
 router.put("/:id", cargaController.actualizarEstado);
+router.delete("/pendientes/:id", cargaController.eliminarCargaPendiente);
 
 export default router; 

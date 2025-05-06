@@ -55,4 +55,17 @@ export class CargaController {
             });
         }
     }
+
+    eliminarCargaPendiente = async (req: Request, res: Response) => {
+        try {
+            const { id } = req.params;
+            await this.cargaService.eliminarCargaPendiente(parseInt(id));
+            res.json({ message: "Carga pendiente eliminada correctamente" });
+        } catch (error) {
+            res.status(500).json({
+                message: "Error al eliminar la carga pendiente",
+                error: (error as Error).message
+            });
+        }
+    }
 } 

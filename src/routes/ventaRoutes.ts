@@ -10,4 +10,7 @@ router.post("/", ventaController.crearVenta);
 // Ruta para obtener el resumen de ventas
 router.get("/resumen", ventaController.obtenerResumenVentas);
 
+// Ruta para eliminar una venta
+router.delete("/:ventaId", ventaController.eliminarVenta);
+
 export default router; 

@@ -37,4 +37,30 @@ export class VentaController {
             });
         }
     }
+
+    eliminarVenta = async (req: Request, res: Response) => {
+        try {
+            const { ventaId } = req.params;
+            
+            if (!ventaId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "El ID de la venta es requerido"
+                });
+            }
+
+            await this.ventaService.eliminarVenta(ventaId);
+
+            res.json({
+                success: true,
+                message: "Venta eliminada correctamente"
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                success: false,
+                message: "Error al eliminar la venta",
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    }
 } 

@@ -13,13 +13,44 @@ export class CargaService {
             cantidad: number;
             nombre_producto: string;
         }[];
+        fecha: string;
     }): Promise<Carga> {
         // Verificar que el repartidor existe
         await this.repartidorService.obtenerRepartidorPorId(data.repartidor_id.toString());
 
+        // Crear la fecha correctamente
+        let fechaCarga: Date;
+        if (data.fecha) {
+            // Si la fecha incluye hora, usarla tal cual
+            if (data.fecha.includes('T')) {
+                fechaCarga = new Date(data.fecha);
+            } else {
+                // Parsear la fecha manualmente para evitar problemas de zona horaria
+                const [year, month, day] = data.fecha.split('-').map(Number);
+                const fechaSeleccionada = new Date(year, month - 1, day); // month - 1 porque en JS los meses van de 0 a 11
+                const hoy = new Date();
+                
+                // Comparar solo el día, mes y año
+                const esHoy = fechaSeleccionada.getDate() === hoy.getDate() &&
+                            fechaSeleccionada.getMonth() === hoy.getMonth() &&
+                            fechaSeleccionada.getFullYear() === hoy.getFullYear();
+
+                if (esHoy) {
+                    // Si es hoy, usar la hora actual
+                    fechaSeleccionada.setHours(hoy.getHours(), hoy.getMinutes(), hoy.getSeconds());
+                } else {
+                    // Si no es hoy, usar hora predeterminada (00:00:00)
+                    fechaSeleccionada.setHours(0, 0, 0);
+                }
+                fechaCarga = fechaSeleccionada;
+            }
+        } else {
+            fechaCarga = new Date();
+        }
+
         const carga = this.cargaRepository.create({
             ...data,
-            fecha_carga: new Date(),
+            fecha_carga: fechaCarga,
             estado: 'pendiente'
         });
 
@@ -62,5 +93,20 @@ export class CargaService {
             relations: ['items', 'repartidor'],
             order: { fecha_carga: 'DESC' }
         });
+    }
+
+    async eliminarCargaPendiente(id: number): Promise<void> {
+        const carga = await this.cargaRepository.findOne({
+            where: { 
+                id,
+                estado: 'pendiente'
+            }
+        });
+
+        if (!carga) {
+            throw new Error('No se encontró la carga pendiente o ya ha sido completada');
+        }
+
+        await this.cargaRepository.remove(carga);
     }
 } 

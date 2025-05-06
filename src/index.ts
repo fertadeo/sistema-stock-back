@@ -14,9 +14,7 @@ import repartidorRoutes from "./routes/repartidorRoutes";
 import cargaRoutes from './routes/cargaRoutes';
 import descargaRoutes from './routes/descargaRoutes';
 import ventasCerradasRoutes from './routes/ventasCerradasRoutes';
-
-
-
+import revendedorRoutes from './routes/revendedorRoutes';
 
 const app = express();
 const port = 8080;
@@ -37,8 +35,7 @@ app.use("/api/repartidores", repartidorRoutes);
 app.use("/api/cargas", cargaRoutes);
 app.use('/api/descargas', descargaRoutes);
 app.use('/api/ventas-cerradas', ventasCerradasRoutes);
-
-
+app.use('/api/revendedores', revendedorRoutes);
 
 // Rutas adicionales
 app.get('/', (req, res) => {

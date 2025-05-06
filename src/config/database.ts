@@ -13,6 +13,7 @@ import { DescargaEnvases } from '../entities/DescargaEnvases';
 import { EnvasesPrestados } from '../entities/EnvasesPrestados';
 import { Zona } from '../entities/Zona';
 import { VentaCerrada } from '../entities/VentaCerrada';
+import { Revendedor } from '../entities/Revendedor';
 
 // Determinar si estamos en modo producción o desarrollo
 const isProduction = process.env.NODE_ENV === 'production';
@@ -38,7 +39,7 @@ export const AppDataSource = new DataSource({
   database: isProduction ? process.env.DB_NAME_PROD : process.env.DB_NAME_DEV,
   synchronize: false,
   logging: false,
-  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada],
+  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor],
 });
 
 

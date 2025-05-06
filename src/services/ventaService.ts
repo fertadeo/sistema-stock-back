@@ -89,4 +89,17 @@ export class VentaService {
             transferencia: ventas.filter(v => v.medio_pago === 'transferencia').length
         };
     }
+
+    async eliminarVenta(ventaId: string): Promise<boolean> {
+        const venta = await this.ventaRepository.findOne({
+            where: { venta_id: ventaId }
+        });
+
+        if (!venta) {
+            throw new Error('Venta no encontrada');
+        }
+
+        await this.ventaRepository.remove(venta);
+        return true;
+    }
 } 

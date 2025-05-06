@@ -148,25 +148,36 @@ export const getVentasCerradas = async (req: Request, res: Response) => {
       order: { fecha_cierre: 'DESC' }
     });
 
-    const ventasFormateadas = ventasCerradas.map(venta => ({
-      id: venta.id,
-      proceso_id: venta.proceso_id,
-      fecha_cierre: venta.fecha_cierre,
-      total_venta: venta.total_venta,
-      comision_porcentaje: venta.comision_porcentaje,
-      ganancia_repartidor: venta.ganancia_repartidor,
-      ganancia_fabrica: venta.ganancia_fabrica,
-      monto_efectivo: venta.monto_efectivo,
-      monto_transferencia: venta.monto_transferencia,
-      balance_fiado: venta.balance_fiado,
-      estado: venta.estado,
-      repartidor: venta.repartidor ? {
-        id: venta.repartidor.id,
-        nombre: venta.repartidor.nombre
-      } : null,
-      observaciones: venta.observaciones,
-      created_at: venta.created_at
-    }));
+    // Obtener las descargas relacionadas
+    const descargas = await descargaRepository.find({
+      where: { id: In(ventasCerradas.map(v => v.proceso_id)) },
+      relations: ['carga']
+    });
+
+    const ventasFormateadas = ventasCerradas.map(venta => {
+      const descarga = descargas.find(d => d.id === venta.proceso_id);
+      return {
+        id: venta.id,
+        proceso_id: venta.proceso_id,
+        fecha_cierre: venta.fecha_cierre,
+        fecha_carga: descarga?.carga?.fecha_carga,
+        total_venta: venta.total_venta,
+        comision_porcentaje: venta.comision_porcentaje,
+        ganancia_repartidor: venta.ganancia_repartidor,
+        ganancia_fabrica: venta.ganancia_fabrica,
+        monto_efectivo: venta.monto_efectivo,
+        monto_transferencia: venta.monto_transferencia,
+        balance_fiado: venta.balance_fiado,
+        estado: venta.estado,
+        repartidor: venta.repartidor ? {
+          id: venta.repartidor.id,
+          nombre: venta.repartidor.nombre
+        } : null,
+        observaciones: venta.observaciones,
+        created_at: venta.created_at,
+        grupo_cierre: venta.grupo_cierre
+      };
+    });
 
     res.json({
       success: true,
@@ -198,10 +209,17 @@ export const getVentaCerradaById = async (req: Request, res: Response) => {
       });
     }
 
+    // Obtener la descarga relacionada
+    const descarga = await descargaRepository.findOne({
+      where: { id: ventaCerrada.proceso_id },
+      relations: ['carga']
+    });
+
     const ventaFormateada = {
       id: ventaCerrada.id,
       proceso_id: ventaCerrada.proceso_id,
       fecha_cierre: ventaCerrada.fecha_cierre,
+      fecha_carga: descarga?.carga?.fecha_carga,
       total_venta: ventaCerrada.total_venta,
       comision_porcentaje: ventaCerrada.comision_porcentaje,
       ganancia_repartidor: ventaCerrada.ganancia_repartidor,
@@ -261,25 +279,36 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
       order: { fecha_cierre: 'DESC' }
     });
 
-    const ventasFormateadas = ventasCerradas.map(venta => ({
-      id: venta.id,
-      proceso_id: venta.proceso_id,
-      fecha_cierre: venta.fecha_cierre,
-      total_venta: venta.total_venta,
-      comision_porcentaje: venta.comision_porcentaje,
-      ganancia_repartidor: venta.ganancia_repartidor,
-      ganancia_fabrica: venta.ganancia_fabrica,
-      monto_efectivo: venta.monto_efectivo,
-      monto_transferencia: venta.monto_transferencia,
-      balance_fiado: venta.balance_fiado,
-      estado: venta.estado,
-      repartidor: venta.repartidor ? {
-        id: venta.repartidor.id,
-        nombre: venta.repartidor.nombre
-      } : null,
-      observaciones: venta.observaciones,
-      created_at: venta.created_at
-    }));
+    // Obtener las descargas relacionadas
+    const descargas = await descargaRepository.find({
+      where: { id: In(ventasCerradas.map(v => v.proceso_id)) },
+      relations: ['carga']
+    });
+
+    const ventasFormateadas = ventasCerradas.map(venta => {
+      const descarga = descargas.find(d => d.id === venta.proceso_id);
+      return {
+        id: venta.id,
+        proceso_id: venta.proceso_id,
+        fecha_cierre: venta.fecha_cierre,
+        fecha_carga: descarga?.carga?.fecha_carga,
+        total_venta: venta.total_venta,
+        comision_porcentaje: venta.comision_porcentaje,
+        ganancia_repartidor: venta.ganancia_repartidor,
+        ganancia_fabrica: venta.ganancia_fabrica,
+        monto_efectivo: venta.monto_efectivo,
+        monto_transferencia: venta.monto_transferencia,
+        balance_fiado: venta.balance_fiado,
+        estado: venta.estado,
+        grupo_cierre: venta.grupo_cierre,
+        repartidor: venta.repartidor ? {
+          id: venta.repartidor.id,
+          nombre: venta.repartidor.nombre
+        } : null,
+        observaciones: venta.observaciones,
+        created_at: venta.created_at
+      };
+    });
 
     // Calcular totales
     const totalVentas = ventasCerradas.reduce((sum, venta) => sum + Number(venta.total_venta), 0);
@@ -317,7 +346,7 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
 
 export const actualizarVentaCerrada = async (req: Request, res: Response) => {
   try {
-    const { ids, comision_porcentaje, observaciones } = req.body;
+    const { ids, comision_porcentaje, observaciones, grupo_cierre } = req.body;
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({
@@ -330,6 +359,13 @@ export const actualizarVentaCerrada = async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         message: 'El porcentaje de comisión es requerido'
+      });
+    }
+
+    if (!grupo_cierre) {
+      return res.status(400).json({
+        success: false,
+        message: 'El grupo de cierre es requerido'
       });
     }
 
@@ -370,7 +406,8 @@ export const actualizarVentaCerrada = async (req: Request, res: Response) => {
           comision_porcentaje,
           ganancia_repartidor,
           ganancia_fabrica,
-          observaciones: observaciones || venta.observaciones
+          observaciones: observaciones || venta.observaciones,
+          grupo_cierre
         });
       }
 
@@ -396,7 +433,8 @@ export const actualizarVentaCerrada = async (req: Request, res: Response) => {
             id: venta.repartidor.id,
             nombre: venta.repartidor.nombre
           },
-          observaciones: venta.observaciones
+          observaciones: venta.observaciones,
+          grupo_cierre: venta.grupo_cierre
         }))
       });
 
