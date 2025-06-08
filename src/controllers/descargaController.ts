@@ -47,7 +47,7 @@ export const descargaController = {
       // Obtener la carga específica
       const carga = await cargaRepository.findOne({
         where: { id: carga_id },
-        relations: ['items']
+        relations: ['items', 'items.producto']
       });
 
       if (!carga) {
@@ -58,11 +58,17 @@ export const descargaController = {
         return res.status(400).json({ message: 'Esta carga ya ha sido completada' });
       }
 
-      // Calcular productos vendidos
+      // Calcular productos vendidos y guardar precios unitarios
       const productos_vendidos = carga.items.reduce((total, item) => {
         const devuelto = productos_devueltos.find((p: { producto_id: number; }) => p.producto_id === item.producto_id);
         return total + (item.cantidad - (devuelto ? devuelto.cantidad : 0));
       }, 0);
+
+      // Guardar los precios unitarios actuales de cada producto
+      const precios_unitarios = carga.items.map(item => ({
+        producto_id: item.producto_id,
+        precio_unitario: item.producto.precioPublico
+      }));
 
       // Calcular total de envases recuperados
       const total_envases_recuperados = Array.isArray(envases_recuperados) 
@@ -72,37 +78,35 @@ export const descargaController = {
       // Calcular déficit de envases
       const deficit_envases = productos_vendidos - total_envases_recuperados;
 
-      // Preparar array de envases para la entidad Descarga
-      const envases_array = Array.isArray(envases_recuperados) && envases_recuperados.length > 0
-        ? envases_recuperados.map((e: { producto_id: number; cantidad: number; }) => ({
-            producto_id: e.producto_id,
-            envases_recuperados: e.cantidad,
-            deficit_envases: productos_devueltos.find((p: { producto_id: number; }) => p.producto_id === e.producto_id)?.cantidad || 0
-          }))
-        : [];
-
-      const nuevaDescarga = descargaRepository.create({
+      // Crear la descarga con los precios unitarios
+      const descarga = descargaRepository.create({
         repartidor,
         carga,
         productos_devueltos,
         productos_vendidos,
-        envases: envases_array,
-        observaciones
+        precios_unitarios,
+        observaciones,
+        estado_cuenta: 'pendiente'
       });
 
-      await descargaRepository.save(nuevaDescarga);
-
-      // Actualizar el estado de la carga a completada
-      carga.estado = 'completada';
-      await cargaRepository.save(carga);
+      await descargaRepository.save(descarga);
 
       res.status(201).json({
         message: 'Descarga registrada exitosamente',
-        data: nuevaDescarga
+        descarga: {
+          id: descarga.id,
+          fecha_descarga: descarga.fecha_descarga,
+          productos_vendidos: descarga.productos_vendidos,
+          precios_unitarios: descarga.precios_unitarios,
+          estado_cuenta: descarga.estado_cuenta
+        }
       });
     } catch (error) {
       console.error('Error al crear descarga:', error);
-      res.status(500).json({ message: 'Error al registrar la descarga' });
+      res.status(500).json({ 
+        message: 'Error al crear la descarga',
+        error: (error as Error).message
+      });
     }
   },
 
@@ -152,7 +156,17 @@ export const descargaController = {
 
           const cantidadDevuelta = devuelto ? devuelto.cantidad : 0;
           const cantidadVendida = item.cantidad - cantidadDevuelta;
-          const subtotal = cantidadVendida * item.producto.precioPublico;
+          
+          // Buscar el precio unitario modificado si existe
+          const precioModificado = Array.isArray(descarga.precios_unitarios)
+            ? descarga.precios_unitarios.find(
+                (p: { producto_id: number; precio_unitario: number }) => 
+                p.producto_id === item.producto_id
+              )
+            : null;
+          
+          const precio_unitario = precioModificado ? precioModificado.precio_unitario : item.producto.precioPublico;
+          const subtotal = cantidadVendida * precio_unitario;
 
           return {
             producto_id: item.producto_id,
@@ -160,7 +174,7 @@ export const descargaController = {
             cantidad_cargada: item.cantidad,
             cantidad_devuelta: cantidadDevuelta,
             cantidad_vendida: cantidadVendida,
-            precio_unitario: item.producto.precioPublico,
+            precio_unitario: precio_unitario,
             subtotal: subtotal
           };
         });
@@ -441,6 +455,65 @@ export const descargaController = {
     }
   },
 
+  actualizarPreciosUnitarios: async (req: Request, res: Response) => {
+    try {
+      const { descarga_id } = req.params;
+      const { precios_unitarios } = req.body;
+  
+      if (!Array.isArray(precios_unitarios)) {
+        return res.status(400).json({ message: 'precios_unitarios debe ser un array' });
+      }
+  
+      const descargaRepository = AppDataSource.getRepository(Descarga);
+  
+      // Buscar la descarga
+      const descarga = await descargaRepository.findOne({
+        where: { id: parseInt(descarga_id) },
+        relations: ['carga', 'carga.items', 'carga.items.producto']
+      });
+  
+      if (!descarga) {
+        return res.status(404).json({ message: 'Descarga no encontrada' });
+      }
+  
+      // Actualizar precios_unitarios
+      descarga.precios_unitarios = precios_unitarios;
+  
+      // Recalcular monto_total usando los nuevos precios
+      const productosDevueltos = Array.isArray(descarga.productos_devueltos) ? descarga.productos_devueltos : [];
+      let monto_total = 0;
+  
+      descarga.carga.items.forEach(item => {
+        const devuelto = productosDevueltos.find((p: any) => p.producto_id === item.producto_id);
+        const cantidadVendida = item.cantidad - (devuelto ? devuelto.cantidad : 0);
+  
+        // Buscar el nuevo precio unitario
+        const precioNuevo = precios_unitarios.find((p: any) => p.producto_id === item.producto_id);
+        const precio_unitario = precioNuevo ? precioNuevo.precio_unitario : item.producto.precioPublico;
+  
+        monto_total += cantidadVendida * precio_unitario;
+      });
+  
+      descarga.monto_total = monto_total;
+  
+      // Si ya tiene porcentajes, recalcula ganancias
+      if (descarga.porcentaje_repartidor && descarga.porcentaje_empresa) {
+        descarga.ganancia_repartidor = (monto_total * descarga.porcentaje_repartidor) / 100;
+        descarga.ganancia_empresa = (monto_total * descarga.porcentaje_empresa) / 100;
+      }
+  
+      await descargaRepository.save(descarga);
+  
+      res.json({
+        message: 'Precios unitarios actualizados y monto total recalculado',
+        descarga
+      });
+    } catch (error) {
+      console.error('Error al actualizar precios unitarios:', error);
+      res.status(500).json({ message: 'Error al actualizar los precios unitarios', error: (error as Error).message });
+    }
+  },
+
   obtenerEstadoCuenta: async (req: Request, res: Response) => {
     try {
       const { descarga_id } = req.params;
@@ -473,5 +546,45 @@ export const descargaController = {
       console.error('Error al obtener estado de cuenta:', error);
       res.status(500).json({ message: 'Error al obtener el estado de cuenta' });
     }
-  }
+  },
+
+  eliminarDescarga: async (req: Request, res: Response) => {
+    try {
+      const { descarga_id } = req.params;
+      const descargaRepository = AppDataSource.getRepository(Descarga);
+      
+      const descarga = await descargaRepository.findOne({
+        where: { id: parseInt(descarga_id) }
+      });
+
+      if (!descarga) {
+        return res.status(404).json({ 
+          success: false,
+          message: 'Descarga no encontrada' 
+        });
+      }
+
+      if (descarga.estado_cuenta === 'finalizado') {
+        return res.status(400).json({ 
+          success: false,
+          message: 'No se puede eliminar una descarga finalizada' 
+        });
+      }
+
+      await descargaRepository.remove(descarga);
+
+      res.json({
+        success: true,
+        message: 'Descarga eliminada exitosamente'
+      });
+    } catch (error) {
+      console.error('Error al eliminar descarga:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Error al eliminar la descarga',
+        error: (error as Error).message
+      });
+    }
+  },
+
 }; 

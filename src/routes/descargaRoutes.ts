@@ -27,4 +27,8 @@ router.post('/cerrar-cuenta/:descarga_id', descargaController.cerrarCuenta);
 // Obtener estado de cuenta de una descarga
 router.get('/estado-cuenta/:descarga_id', descargaController.obtenerEstadoCuenta);
 
+router.put('/:descarga_id/precios-unitarios', descargaController.actualizarPreciosUnitarios);
+
+router.delete('/:descarga_id', descargaController.eliminarDescarga);
+
 export default router; 

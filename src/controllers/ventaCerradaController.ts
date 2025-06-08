@@ -4,10 +4,12 @@ import { VentaCerrada } from '../entities/VentaCerrada';
 import { Repartidor } from '../entities/Repartidor';
 import { Descarga } from '../entities/Descarga';
 import { In } from 'typeorm';
+import { MovimientoService } from '../services/movimientoService';
 
 const ventaCerradaRepository = AppDataSource.getRepository(VentaCerrada);
 const repartidorRepository = AppDataSource.getRepository(Repartidor);
 const descargaRepository = AppDataSource.getRepository(Descarga);
+const movimientoService = new MovimientoService();
 
 export const createVentaCerrada = async (req: Request, res: Response) => {
   try {
@@ -90,6 +92,22 @@ export const createVentaCerrada = async (req: Request, res: Response) => {
       await queryRunner.manager.update(Descarga, proceso_id, {
         estado_cuenta: 'finalizado'
       });
+
+      // Registrar el movimiento
+      await movimientoService.registrarVentaRepartidor(
+        total_venta,
+        descarga.carga.items.map(item => item.producto.nombreProducto),
+        {
+          venta_cerrada_id: ventaCerradaGuardada.id,
+          repartidor_id: repartidor_id,
+          monto_efectivo: monto_efectivo || 0,
+          monto_transferencia: monto_transferencia || 0,
+          balance_fiado: balance_fiado_calculado,
+          comision_porcentaje: comision_porcentaje || 0,
+          ganancia_repartidor,
+          ganancia_fabrica
+        }
+      );
 
       // Confirmar la transacción
       await queryRunner.commitTransaction();
@@ -451,6 +469,64 @@ export const actualizarVentaCerrada = async (req: Request, res: Response) => {
       success: false,
       message: 'Error al actualizar las ventas cerradas',
       error: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+};
+
+export const eliminarVentaCerrada = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const ventaCerradaRepository = AppDataSource.getRepository(VentaCerrada);
+    const descargaRepository = AppDataSource.getRepository(Descarga);
+    
+    const ventaCerrada = await ventaCerradaRepository.findOne({
+      where: { id: parseInt(id) }
+    });
+
+    if (!ventaCerrada) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Venta cerrada no encontrada' 
+      });
+    }
+
+    // Iniciar transacción
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Actualizar el estado de la descarga a pendiente
+      await queryRunner.manager.update(Descarga, ventaCerrada.proceso_id, {
+        estado_cuenta: 'pendiente',
+        monto_total: 0,
+        ganancia_repartidor: 0,
+        ganancia_empresa: 0,
+        porcentaje_repartidor: 0,
+        porcentaje_empresa: 0
+      });
+
+      // Eliminar la venta cerrada
+      await queryRunner.manager.remove(ventaCerrada);
+
+      await queryRunner.commitTransaction();
+
+      res.json({
+        success: true,
+        message: 'Venta cerrada eliminada exitosamente'
+      });
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  } catch (error) {
+    console.error('Error al eliminar venta cerrada:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error al eliminar la venta cerrada',
+      error: (error as Error).message
     });
   }
 }; 

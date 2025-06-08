@@ -17,6 +17,8 @@ export const clientesService = {
         email: cliente.email,
         telefono: cliente.telefono,
         direccion: cliente.direccion,
+        latitud: cliente.latitud,
+        longitud: cliente.longitud,
         fecha_alta: cliente.fecha_alta,
         estado: cliente.estado,
         repartidor: cliente.repartidor,

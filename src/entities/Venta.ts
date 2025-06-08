@@ -1,5 +1,14 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from "typeorm";
 
+// Primero definimos la interfaz para el producto
+interface ProductoVenta {
+    producto_id: string;
+    cantidad: number;
+    precio_unitario: string;
+    subtotal: string;
+    nombre?: string; // Opcional para cuando necesitemos el nombre
+}
+
 @Entity()
 export class Venta {
     @PrimaryGeneratedColumn('uuid')
@@ -12,21 +21,16 @@ export class Venta {
     repartidor_id!: string;
 
     @Column('json')
-    productos!: {
-        producto_id: string;
-        cantidad: number;
-        precio_unitario: string;
-        subtotal: string;
-    }[];
+    productos!: ProductoVenta[];
 
     @Column()
     monto_total!: string;
 
     @Column({
         type: 'enum',
-        enum: ['efectivo', 'transferencia']
+        enum: ['efectivo', 'transferencia', 'debito', 'credito']
     })
-    medio_pago!: 'efectivo' | 'transferencia';
+    medio_pago!: 'efectivo' | 'transferencia' | 'debito' | 'credito';
 
     @Column({
         type: 'enum',
@@ -42,4 +46,23 @@ export class Venta {
 
     @CreateDateColumn()
     fecha_venta!: Date;
+
+    @Column({
+        type: 'enum',
+        enum: ['LOCAL', 'REPARTIDOR', 'REVENDEDOR'],
+        default: 'LOCAL'
+    })
+    tipo!: 'LOCAL' | 'REPARTIDOR' | 'REVENDEDOR';
+
+    @Column({ nullable: true })
+    cliente_id!: string;
+
+    @Column({ nullable: true })
+    nombre_cliente!: string;
+
+    @Column({ nullable: true })
+    telefono_cliente!: string;
+
+    @Column({ nullable: true })
+    observaciones!: string;
 }

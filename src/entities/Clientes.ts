@@ -22,6 +22,12 @@ export class Clientes {
   @Column()
     direccion: string = '';
 
+  @Column({ type: 'decimal', precision: 10, scale: 8, nullable: true })
+    latitud: number | null = null;
+
+  @Column({ type: 'decimal', precision: 11, scale: 8, nullable: true })
+    longitud: number | null = null;
+
   @ManyToOne(() => Zona)
   @JoinColumn({ name: 'zona' })
     zona!: Zona;

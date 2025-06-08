@@ -19,6 +19,9 @@ export class Descarga {
   @Column('json')
   productos_devueltos!: Array<{producto_id: number, cantidad: number}>;
 
+  @Column('json')
+  precios_unitarios!: Array<{producto_id: number, precio_unitario: number}>;
+
   @Column()
   productos_vendidos!: number;
 
