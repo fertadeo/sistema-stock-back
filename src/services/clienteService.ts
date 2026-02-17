@@ -1,7 +1,9 @@
 import { AppDataSource } from '../config/database';
 import { Clientes } from '../entities/Clientes';
+import { Venta } from '../entities/Venta';
 
 const clienteRepository = AppDataSource.getRepository(Clientes);
+const ventaRepository = AppDataSource.getRepository(Venta);
 
 /** Puntuación de relevancia para búsqueda */
 const PUNTUACION = {
@@ -120,7 +122,14 @@ export const clientesService = {
       return null;
     }
 
-    return transformarCliente(cliente);
+    const historial_ventas = await ventaRepository.find({
+      where: { cliente_id: id.toString() },
+      order: { fecha_venta: 'DESC' },
+    });
+
+    const transformado = transformarCliente(cliente);
+    transformado.historial_ventas = historial_ventas;
+    return transformado;
   },
 
   getAllClientes: async (): Promise<any[]> => {

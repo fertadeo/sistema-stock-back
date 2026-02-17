@@ -45,6 +45,26 @@ export class VentaController {
         }
     }
 
+    obtenerDatosParaVisualizacion = async (req: Request, res: Response) => {
+        try {
+            const { fechaInicio, fechaFin } = req.query;
+            const fechaInicioDate = fechaInicio ? new Date(fechaInicio as string) : undefined;
+            const fechaFinDate = fechaFin ? new Date(fechaFin as string) : undefined;
+
+            const datos = await this.ventaService.obtenerDatosParaVisualizacion(
+                fechaInicioDate,
+                fechaFinDate
+            );
+
+            res.json(datos);
+        } catch (error) {
+            res.status(500).json({
+                message: 'Error al obtener datos para visualización',
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    }
+
     eliminarVenta = async (req: Request, res: Response) => {
         try {
             const { ventaId } = req.params;
