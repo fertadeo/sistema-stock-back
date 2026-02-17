@@ -12,6 +12,9 @@ router.get('/resumen', movimientoController.obtenerResumen);
 // Obtener todos los movimientos con filtros
 router.get('/', movimientoController.obtenerTodos);
 
+// Obtener movimientos por cliente (debe ir antes de /:id)
+router.get('/cliente/:clienteId', movimientoController.obtenerPorCliente);
+
 // Obtener un movimiento específico
 router.get('/:id', movimientoController.obtenerPorId);
 

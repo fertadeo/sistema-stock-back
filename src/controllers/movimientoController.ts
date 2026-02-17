@@ -97,6 +97,48 @@ export const movimientoController = {
         }
     },
 
+    // Obtener movimientos por cliente (detalles JSON contiene cliente_id)
+    obtenerPorCliente: async (req: Request, res: Response) => {
+        try {
+            const clienteId = parseInt(req.params.clienteId);
+
+            if (isNaN(clienteId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'ID de cliente inválido'
+                });
+            }
+
+            const movimientosRaw = await movimientoRepository.find({
+                where: { activo: true },
+                relations: ['usuario'],
+                order: { fecha: 'DESC' },
+                take: 500
+            });
+
+            const movimientos = movimientosRaw
+                .filter((m) => {
+                    const det = m.detalles as Record<string, unknown> | null;
+                    if (!det || !('cliente_id' in det)) return false;
+                    const cid = det.cliente_id;
+                    return cid === clienteId || String(cid) === String(clienteId);
+                })
+                .slice(0, 100);
+
+            res.json({
+                success: true,
+                movimientos
+            });
+        } catch (error) {
+            console.error('Error al obtener movimientos por cliente:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener los movimientos del cliente',
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    },
+
     // Obtener un movimiento específico
     obtenerPorId: async (req: Request, res: Response) => {
         try {
