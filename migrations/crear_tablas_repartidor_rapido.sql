@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS `cobros` (
   KEY `cliente_id` (`cliente_id`),
   KEY `repartidor_id` (`repartidor_id`),
   KEY `venta_relacionada_id` (`venta_relacionada_id`),
-  KEY `idx_cobros_cliente_fecha` (`cliente_id`, `fecha_cobro`),
   CONSTRAINT `cobros_cliente_fk` FOREIGN KEY (`cliente_id`) REFERENCES `clientes` (`id`) ON DELETE CASCADE,
   CONSTRAINT `cobros_repartidor_fk` FOREIGN KEY (`repartidor_id`) REFERENCES `repartidores` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -40,7 +39,6 @@ CREATE TABLE IF NOT EXISTS `movimientos_envases` (
   KEY `repartidor_id` (`repartidor_id`),
   KEY `venta_relacionada_id` (`venta_relacionada_id`),
   KEY `fecha_movimiento` (`fecha_movimiento`),
-  KEY `idx_movimientos_envases_cliente_tipo` (`cliente_id`, `tipo`),
   CONSTRAINT `movimientos_envases_cliente_fk` FOREIGN KEY (`cliente_id`) REFERENCES `clientes` (`id`) ON DELETE CASCADE,
   CONSTRAINT `movimientos_envases_producto_fk` FOREIGN KEY (`producto_id`) REFERENCES `productos` (`id`) ON DELETE CASCADE,
   CONSTRAINT `movimientos_envases_repartidor_fk` FOREIGN KEY (`repartidor_id`) REFERENCES `repartidores` (`id`) ON DELETE SET NULL

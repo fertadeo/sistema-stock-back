@@ -4,6 +4,7 @@ import { Cobro } from '../entities/Cobro';
 import { MovimientoEnvase, TipoMovimientoEnvase } from '../entities/MovimientoEnvase';
 import { Clientes } from '../entities/Clientes';
 import { EnvasesPrestados } from '../entities/EnvasesPrestados';
+import { VisitaNoEncontrado } from '../entities/VisitaNoEncontrado';
 import { MovimientoService } from './movimientoService';
 import { VentaService } from './ventaService';
 
@@ -13,6 +14,7 @@ export class RepartidorRapidoService {
     private movimientoEnvaseRepository = AppDataSource.getRepository(MovimientoEnvase);
     private clienteRepository = AppDataSource.getRepository(Clientes);
     private envasesPrestadosRepository = AppDataSource.getRepository(EnvasesPrestados);
+    private visitaNoEncontradoRepository = AppDataSource.getRepository(VisitaNoEncontrado);
     private ventaService = new VentaService();
     private movimientoService = new MovimientoService();
 
@@ -336,6 +338,33 @@ export class RepartidorRapidoService {
         if (nombreProducto.includes('20')) return 20;
         if (nombreProducto.includes('12')) return 12;
         return 0;
+    }
+
+    /**
+     * Registra que el repartidor no encontró al cliente en la visita
+     */
+    async registrarNoEncontrado(data: {
+        cliente_id: number;
+        repartidor_id?: number;
+        observaciones?: string;
+        fecha?: string; // ISO string
+    }) {
+        const cliente = await this.clienteRepository.findOne({
+            where: { id: data.cliente_id }
+        });
+
+        if (!cliente) {
+            throw new Error('Cliente no encontrado');
+        }
+
+        const visita = this.visitaNoEncontradoRepository.create({
+            cliente_id: data.cliente_id,
+            repartidor_id: data.repartidor_id,
+            observaciones: data.observaciones || 'Cliente no encontrado en la visita',
+            fecha_visita: data.fecha ? new Date(data.fecha) : new Date()
+        });
+
+        return await this.visitaNoEncontradoRepository.save(visita);
     }
 
     /**

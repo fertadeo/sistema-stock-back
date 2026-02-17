@@ -192,6 +192,48 @@ export class RepartidorRapidoController {
     };
 
     /**
+     * Registra que el repartidor no encontró al cliente en la visita
+     * POST /api/repartidor-rapido/no-encontrado
+     */
+    registrarNoEncontrado = async (req: Request, res: Response) => {
+        try {
+            const {
+                cliente_id,
+                repartidor_id,
+                observaciones = 'Cliente no encontrado en la visita',
+                fecha
+            } = req.body;
+
+            if (!cliente_id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El cliente_id es requerido'
+                });
+            }
+
+            const registro = await repartidorRapidoService.registrarNoEncontrado({
+                cliente_id,
+                repartidor_id,
+                observaciones,
+                fecha
+            });
+
+            res.status(201).json({
+                success: true,
+                message: 'Registro guardado: cliente no encontrado',
+                data: registro
+            });
+        } catch (error) {
+            console.error('Error al registrar visita no encontrada:', error);
+            res.status(500).json({
+                success: false,
+                message: error instanceof Error ? error.message : 'No se pudo registrar',
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    };
+
+    /**
      * Obtiene el resumen de envases de un cliente
      * GET /api/repartidor-rapido/envases/:cliente_id
      */

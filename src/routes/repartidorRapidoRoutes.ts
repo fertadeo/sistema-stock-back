@@ -13,6 +13,9 @@ router.post('/cobro', repartidorRapidoController.registrarCobroRapido);
 // Ruta para registrar un fiado rápido
 router.post('/fiado', repartidorRapidoController.registrarFiadoRapido);
 
+// Ruta para registrar visita donde no se encontró al cliente
+router.post('/no-encontrado', repartidorRapidoController.registrarNoEncontrado);
+
 // Ruta para obtener resumen de envases de un cliente
 router.get('/envases/:cliente_id', repartidorRapidoController.obtenerResumenEnvases);
 
