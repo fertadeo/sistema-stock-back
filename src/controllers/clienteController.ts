@@ -21,7 +21,15 @@ const movimientoService = new MovimientoService();
 
 export const getClientes = async (req: Request, res: Response) => {
   try {
-    const clientes = await clientesService.getAllClientes();
+    const search = typeof req.query.search === 'string' ? req.query.search : '';
+
+    let clientes;
+    if (search.trim().length >= 2) {
+      clientes = await clientesService.searchClientes(search);
+    } else {
+      clientes = await clientesService.getAllClientes();
+    }
+
     res.json(clientes);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener los clientes' });
