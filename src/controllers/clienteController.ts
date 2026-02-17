@@ -29,6 +29,38 @@ export const getClientes = async (req: Request, res: Response) => {
   }
 };
 
+export const getClienteById = async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID de cliente inválido'
+      });
+    }
+
+    const cliente = await clientesService.getClienteById(id);
+
+    if (!cliente) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cliente no encontrado',
+        id
+      });
+    }
+
+    res.json(cliente);
+  } catch (error) {
+    console.error('Error al obtener cliente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener el cliente',
+      error: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+};
+
 export const getClientesPorMes = async (req: Request, res: Response) => {
   try {
       const query = `
@@ -554,5 +586,52 @@ export const getEnvasesPrestadosPorCliente = async (req: Request, res: Response)
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Error al obtener los envases prestados' });
+    }
+};
+
+export const toggleEstadoCliente = async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { estado } = req.body;
+
+        // Verificar que el cliente existe
+        const cliente = await clienteRepository.findOne({
+            where: { id }
+        });
+
+        if (!cliente) {
+            return res.status(404).json({ 
+                success: false,
+                message: 'Cliente no encontrado' 
+            });
+        }
+
+        // Actualizar el estado
+        cliente.estado = estado !== undefined ? estado : !cliente.estado;
+        await clienteRepository.save(cliente);
+
+        // Registrar movimiento
+        await movimientoService.registrarMovimiento({
+            tipo: 'MODIFICACION_CLIENTE' as any,
+            descripcion: `Cliente ${cliente.nombre} ${cliente.estado ? 'activado' : 'desactivado'}`,
+            detalles: {
+                cliente_id: id,
+                estado_anterior: !cliente.estado,
+                estado_nuevo: cliente.estado
+            }
+        });
+
+        res.json({
+            success: true,
+            message: `Cliente ${cliente.estado ? 'activado' : 'desactivado'} exitosamente`,
+            cliente
+        });
+    } catch (error) {
+        console.error('Error al cambiar estado del cliente:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Error al cambiar el estado del cliente',
+            error: error instanceof Error ? error.message : 'Error desconocido'
+        });
     }
 };

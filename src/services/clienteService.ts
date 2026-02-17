@@ -2,6 +2,39 @@ import { AppDataSource } from '../config/database';
 import { Clientes } from '../entities/Clientes';
 const clienteRepository = AppDataSource.getRepository(Clientes);
 export const clientesService = {
+  getClienteById: async (id: number): Promise<any | null> => {
+    const cliente = await clienteRepository.findOne({
+      where: { id },
+      relations: ['envases_prestados', 'zona']
+    });
+
+    if (!cliente) {
+      return null;
+    }
+
+    const clienteTransformado: any = {
+      id: cliente.id,
+      dni: cliente.dni,
+      nombre: cliente.nombre,
+      email: cliente.email,
+      telefono: cliente.telefono,
+      direccion: cliente.direccion,
+      latitud: cliente.latitud,
+      longitud: cliente.longitud,
+      fecha_alta: cliente.fecha_alta,
+      estado: cliente.estado,
+      repartidor: cliente.repartidor,
+      dia_reparto: cliente.dia_reparto,
+      envases_prestados: cliente.envases_prestados || []
+    };
+
+    if (cliente.zona) {
+      clienteTransformado.zona = cliente.zona.id;
+    }
+
+    return clienteTransformado;
+  },
+
   getAllClientes: async (): Promise<any[]> => {
     const clientes = await clienteRepository.find({
       relations: ['envases_prestados', 'zona']

@@ -19,6 +19,8 @@ import geocodeRoutes from './routes/geocode';
 import movimientoRoutes from './routes/movimientoRoutes';
 import gastoRoutes from './routes/gastoRoutes';
 import metricasRoutes from './routes/metricasRoutes';
+import repartidorRapidoRoutes from './routes/repartidorRapidoRoutes';
+import sincronizacionRoutes from './routes/sincronizacionRoutes';
 
 const app = express();
 const port = 8080;
@@ -43,6 +45,8 @@ app.use('/api/geocode', geocodeRoutes);
 app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/gastos', gastoRoutes);
 app.use('/api/metricas', metricasRoutes);
+app.use('/api/repartidor-rapido', repartidorRapidoRoutes);
+app.use('/api/sincronizacion', sincronizacionRoutes);
 
 // Rutas adicionales
 app.get('/', (req, res) => {
