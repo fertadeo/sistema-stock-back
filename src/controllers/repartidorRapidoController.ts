@@ -192,6 +192,41 @@ export class RepartidorRapidoController {
     };
 
     /**
+     * Obtiene las visitas no encontradas (visitas fallidas)
+     * GET /api/repartidor-rapido/no-encontrado
+     * Query: cliente_id (opcional) - filtrar por cliente
+     */
+    obtenerVisitasNoEncontradas = async (req: Request, res: Response) => {
+        try {
+            const cliente_id = req.query.cliente_id
+                ? parseInt(req.query.cliente_id as string)
+                : undefined;
+
+            if (cliente_id !== undefined && isNaN(cliente_id)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'cliente_id debe ser un número válido'
+                });
+            }
+
+            const visitas = await repartidorRapidoService.obtenerVisitasNoEncontradas(cliente_id);
+
+            res.json({
+                success: true,
+                data: visitas,
+                total: visitas.length
+            });
+        } catch (error) {
+            console.error('Error al obtener visitas no encontradas:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener las visitas no encontradas',
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    };
+
+    /**
      * Registra que el repartidor no encontró al cliente en la visita
      * POST /api/repartidor-rapido/no-encontrado
      */

@@ -341,6 +341,18 @@ export class RepartidorRapidoService {
     }
 
     /**
+     * Obtiene las visitas no encontradas (opcionalmente filtradas por cliente_id)
+     */
+    async obtenerVisitasNoEncontradas(cliente_id?: number) {
+        const where = cliente_id ? { cliente_id } : {};
+        return await this.visitaNoEncontradoRepository.find({
+            where,
+            relations: ['cliente', 'repartidor'],
+            order: { fecha_registro: 'DESC' }
+        });
+    }
+
+    /**
      * Registra que el repartidor no encontró al cliente en la visita
      */
     async registrarNoEncontrado(data: {
