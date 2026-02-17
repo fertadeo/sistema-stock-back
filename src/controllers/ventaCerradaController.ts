@@ -166,26 +166,66 @@ export const getVentasCerradas = async (req: Request, res: Response) => {
       order: { fecha_cierre: 'DESC' }
     });
 
-    // Obtener las descargas relacionadas
+    // Obtener las descargas relacionadas con sus items y productos
     const descargas = await descargaRepository.find({
       where: { id: In(ventasCerradas.map(v => v.proceso_id)) },
-      relations: ['carga']
+      relations: ['carga', 'carga.items', 'carga.items.producto']
     });
 
     const ventasFormateadas = ventasCerradas.map(venta => {
       const descarga = descargas.find(d => d.id === venta.proceso_id);
+      
+      // Calcular el detalle de productos
+      const productos_detalle = descarga?.carga?.items.map(item => {
+        const devueltos = Array.isArray(descarga.productos_devueltos) 
+          ? descarga.productos_devueltos.find(
+              (p: { producto_id: number; cantidad: number }) => 
+              p.producto_id === item.producto_id
+            )?.cantidad || 0
+          : 0;
+        
+        const cantidad_vendida = item.cantidad - devueltos;
+        let precio_unitario = item.producto.precioPublico;
+        if (Array.isArray(descarga.precios_unitarios)) {
+          const precioEditado = descarga.precios_unitarios.find(
+            (p: { producto_id: number; precio_unitario: number }) => p.producto_id === item.producto_id
+          );
+          if (precioEditado) {
+            precio_unitario = precioEditado.precio_unitario;
+          }
+        }
+        const subtotal = cantidad_vendida * precio_unitario;
+
+        return {
+          producto_id: item.producto_id,
+          nombre: item.producto.nombreProducto,
+          cantidad_vendida,
+          precio_unitario,
+          subtotal
+        };
+      }) || [];
+
+      // Sumar los subtotales para obtener el total de venta actualizado
+      const total_venta_actualizado = productos_detalle.reduce((sum, prod) => sum + prod.subtotal, 0);
+
+      // Recalcular ganancias y balance fiado
+      const ganancia_repartidor = total_venta_actualizado * ((venta.comision_porcentaje || 0) / 100);
+      const ganancia_fabrica = total_venta_actualizado - ganancia_repartidor;
+      const pagos_recibidos = Number(venta.monto_efectivo || 0) + Number(venta.monto_transferencia || 0);
+      const balance_fiado = pagos_recibidos - total_venta_actualizado;
+
       return {
         id: venta.id,
         proceso_id: venta.proceso_id,
         fecha_cierre: venta.fecha_cierre,
         fecha_carga: descarga?.carga?.fecha_carga,
-        total_venta: venta.total_venta,
+        total_venta: total_venta_actualizado,
         comision_porcentaje: venta.comision_porcentaje,
-        ganancia_repartidor: venta.ganancia_repartidor,
-        ganancia_fabrica: venta.ganancia_fabrica,
+        ganancia_repartidor,
+        ganancia_fabrica,
         monto_efectivo: venta.monto_efectivo,
         monto_transferencia: venta.monto_transferencia,
-        balance_fiado: venta.balance_fiado,
+        balance_fiado,
         estado: venta.estado,
         repartidor: venta.repartidor ? {
           id: venta.repartidor.id,
@@ -193,7 +233,8 @@ export const getVentasCerradas = async (req: Request, res: Response) => {
         } : null,
         observaciones: venta.observaciones,
         created_at: venta.created_at,
-        grupo_cierre: venta.grupo_cierre
+        grupo_cierre: venta.grupo_cierre,
+        productos_detalle
       };
     });
 
@@ -227,30 +268,70 @@ export const getVentaCerradaById = async (req: Request, res: Response) => {
       });
     }
 
-    // Obtener la descarga relacionada
+    // Obtener la descarga relacionada con sus items y productos
     const descarga = await descargaRepository.findOne({
       where: { id: ventaCerrada.proceso_id },
-      relations: ['carga']
+      relations: ['carga', 'carga.items', 'carga.items.producto']
     });
+
+    // Calcular el detalle de productos
+    const productos_detalle = descarga?.carga?.items.map(item => {
+      const devueltos = Array.isArray(descarga.productos_devueltos) 
+        ? descarga.productos_devueltos.find(
+            (p: { producto_id: number; cantidad: number }) => 
+            p.producto_id === item.producto_id
+          )?.cantidad || 0
+        : 0;
+      
+      const cantidad_vendida = item.cantidad - devueltos;
+      let precio_unitario = item.producto.precioPublico;
+      if (Array.isArray(descarga.precios_unitarios)) {
+        const precioEditado = descarga.precios_unitarios.find(
+          (p: { producto_id: number; precio_unitario: number }) => p.producto_id === item.producto_id
+        );
+        if (precioEditado) {
+          precio_unitario = precioEditado.precio_unitario;
+        }
+      }
+      const subtotal = cantidad_vendida * precio_unitario;
+
+      return {
+        producto_id: item.producto_id,
+        nombre: item.producto.nombreProducto,
+        cantidad_vendida,
+        precio_unitario,
+        subtotal
+      };
+    }) || [];
+
+    // Sumar los subtotales para obtener el total de venta actualizado
+    const total_venta_actualizado = productos_detalle.reduce((sum, prod) => sum + prod.subtotal, 0);
+
+    // Recalcular ganancias y balance fiado
+    const ganancia_repartidor = total_venta_actualizado * ((ventaCerrada.comision_porcentaje || 0) / 100);
+    const ganancia_fabrica = total_venta_actualizado - ganancia_repartidor;
+    const pagos_recibidos = Number(ventaCerrada.monto_efectivo || 0) + Number(ventaCerrada.monto_transferencia || 0);
+    const balance_fiado = pagos_recibidos - total_venta_actualizado;
 
     const ventaFormateada = {
       id: ventaCerrada.id,
       proceso_id: ventaCerrada.proceso_id,
       fecha_cierre: ventaCerrada.fecha_cierre,
       fecha_carga: descarga?.carga?.fecha_carga,
-      total_venta: ventaCerrada.total_venta,
+      total_venta: total_venta_actualizado,
       comision_porcentaje: ventaCerrada.comision_porcentaje,
-      ganancia_repartidor: ventaCerrada.ganancia_repartidor,
-      ganancia_fabrica: ventaCerrada.ganancia_fabrica,
+      ganancia_repartidor,
+      ganancia_fabrica,
       monto_efectivo: ventaCerrada.monto_efectivo,
       monto_transferencia: ventaCerrada.monto_transferencia,
-      balance_fiado: ventaCerrada.balance_fiado,
+      balance_fiado,
       repartidor: ventaCerrada.repartidor ? {
         id: ventaCerrada.repartidor.id,
         nombre: ventaCerrada.repartidor.nombre
       } : null,
       observaciones: ventaCerrada.observaciones,
-      created_at: ventaCerrada.created_at
+      created_at: ventaCerrada.created_at,
+      productos_detalle
     };
 
     res.json({
@@ -297,26 +378,66 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
       order: { fecha_cierre: 'DESC' }
     });
 
-    // Obtener las descargas relacionadas
+    // Obtener las descargas relacionadas con sus items y productos
     const descargas = await descargaRepository.find({
       where: { id: In(ventasCerradas.map(v => v.proceso_id)) },
-      relations: ['carga']
+      relations: ['carga', 'carga.items', 'carga.items.producto']
     });
 
     const ventasFormateadas = ventasCerradas.map(venta => {
       const descarga = descargas.find(d => d.id === venta.proceso_id);
+      
+      // Calcular el detalle de productos
+      const productos_detalle = descarga?.carga?.items.map(item => {
+        const devueltos = Array.isArray(descarga.productos_devueltos) 
+          ? descarga.productos_devueltos.find(
+              (p: { producto_id: number; cantidad: number }) => 
+              p.producto_id === item.producto_id
+            )?.cantidad || 0
+          : 0;
+        
+        const cantidad_vendida = item.cantidad - devueltos;
+        let precio_unitario = item.producto.precioPublico;
+        if (Array.isArray(descarga.precios_unitarios)) {
+          const precioEditado = descarga.precios_unitarios.find(
+            (p: { producto_id: number; precio_unitario: number }) => p.producto_id === item.producto_id
+          );
+          if (precioEditado) {
+            precio_unitario = precioEditado.precio_unitario;
+          }
+        }
+        const subtotal = cantidad_vendida * precio_unitario;
+
+        return {
+          producto_id: item.producto_id,
+          nombre: item.producto.nombreProducto,
+          cantidad_vendida,
+          precio_unitario,
+          subtotal
+        };
+      }) || [];
+
+      // Sumar los subtotales para obtener el total de venta actualizado
+      const total_venta_actualizado = productos_detalle.reduce((sum, prod) => sum + prod.subtotal, 0);
+
+      // Recalcular ganancias y balance fiado
+      const ganancia_repartidor = total_venta_actualizado * ((venta.comision_porcentaje || 0) / 100);
+      const ganancia_fabrica = total_venta_actualizado - ganancia_repartidor;
+      const pagos_recibidos = Number(venta.monto_efectivo || 0) + Number(venta.monto_transferencia || 0);
+      const balance_fiado = pagos_recibidos - total_venta_actualizado;
+
       return {
         id: venta.id,
         proceso_id: venta.proceso_id,
         fecha_cierre: venta.fecha_cierre,
         fecha_carga: descarga?.carga?.fecha_carga,
-        total_venta: venta.total_venta,
+        total_venta: total_venta_actualizado,
         comision_porcentaje: venta.comision_porcentaje,
-        ganancia_repartidor: venta.ganancia_repartidor,
-        ganancia_fabrica: venta.ganancia_fabrica,
+        ganancia_repartidor,
+        ganancia_fabrica,
         monto_efectivo: venta.monto_efectivo,
         monto_transferencia: venta.monto_transferencia,
-        balance_fiado: venta.balance_fiado,
+        balance_fiado,
         estado: venta.estado,
         grupo_cierre: venta.grupo_cierre,
         repartidor: venta.repartidor ? {
@@ -324,7 +445,8 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
           nombre: venta.repartidor.nombre
         } : null,
         observaciones: venta.observaciones,
-        created_at: venta.created_at
+        created_at: venta.created_at,
+        productos_detalle
       };
     });
 
