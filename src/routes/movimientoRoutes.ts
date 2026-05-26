@@ -8,6 +8,8 @@ router.get('/stream', movimientoController.streamMovimientos);
 
 // Obtener resumen de movimientos
 router.get('/resumen', movimientoController.obtenerResumen);
+// Dashboard gastos/ingresos (totales, gráfico diario, últimos movimientos)
+router.get('/dashboard', movimientoController.obtenerDashboard);
 
 // Obtener todos los movimientos con filtros
 router.get('/', movimientoController.obtenerTodos);

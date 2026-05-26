@@ -19,6 +19,10 @@ const zonaRepository = AppDataSource.getRepository(Zona);
 const productoRepository = AppDataSource.getRepository(Productos);
 const movimientoService = new MovimientoService();
 
+const obtenerClienteNormalizado = async (id: number) => {
+  return clientesService.getClienteById(id);
+};
+
 export const getClientes = async (req: Request, res: Response) => {
   try {
     const search = typeof req.query.search === 'string' ? req.query.search : '';
@@ -73,11 +77,12 @@ export const getClientesPorMes = async (req: Request, res: Response) => {
   try {
       const query = `
           SELECT 
-              MONTH(fecha_registro) AS mes, 
+              YEAR(fecha_alta) AS anio,
+              MONTH(fecha_alta) AS mes, 
               COUNT(*) AS cantidad 
           FROM clientes
-          GROUP BY MONTH(fecha_registro)
-          ORDER BY mes;
+          GROUP BY YEAR(fecha_alta), MONTH(fecha_alta)
+          ORDER BY anio, mes;
       `;
 
       const result = await AppDataSource.query(query);
@@ -252,7 +257,7 @@ export const createCliente = async (req: Request, res: Response) => {
                     message: 'Error en la creación del cliente',
                     error: 'La zona especificada no existe',
                     zonaInvalida: zona,
-                    sugerencia: "Verificar el ID de la zona usando GET /api/zonas"
+                    sugerencia: "Verificar el ID de la zona usando GET /api/clientes/zonas"
                 });
             }
         }
@@ -314,13 +319,9 @@ export const createCliente = async (req: Request, res: Response) => {
             await envaseRepository.save(envasesARegistrar);
         }
 
-        // Obtener el cliente con sus relaciones
-        const clienteConRelaciones = await clienteRepository.findOne({
-            where: { id: clienteCreado.id },
-            relations: ['envases_prestados', 'zona']
-        });
+        const clienteNormalizado = await obtenerClienteNormalizado(clienteCreado.id);
 
-        res.status(201).json(clienteConRelaciones);
+        res.status(201).json(clienteNormalizado);
     } catch (error) {
         console.error('Error al crear cliente:', error);
         res.status(500).json({
@@ -441,7 +442,7 @@ export const updateCliente = async (req: Request, res: Response) => {
           message: 'Error en la actualización del cliente',
           error: 'La zona especificada no existe',
           zonaInvalida: zona,
-          sugerencia: "Verificar el ID de la zona usando GET /api/zonas"
+          sugerencia: "Verificar el ID de la zona usando GET /api/clientes/zonas"
         });
       }
     }
@@ -472,7 +473,7 @@ export const updateCliente = async (req: Request, res: Response) => {
     };
 
     // Actualizar el cliente
-    const clienteActualizado = await clientesService.updateCliente(id, {
+    await clientesService.updateCliente(id, {
       ...datosCliente,
       zona,
       latitud: coordenadas.latitud,
@@ -500,13 +501,9 @@ export const updateCliente = async (req: Request, res: Response) => {
       }
     }
 
-    // Obtener el cliente actualizado con sus relaciones
-    const clienteConRelaciones = await clienteRepository.findOne({
-      where: { id },
-      relations: ['envases_prestados', 'zona']
-    });
+    const clienteNormalizado = await obtenerClienteNormalizado(id);
 
-    res.json(clienteConRelaciones);
+    res.json(clienteNormalizado);
   } catch (error) {
     console.error('Error al actualizar cliente:', error);
     res.status(500).json({ 
@@ -629,10 +626,12 @@ export const toggleEstadoCliente = async (req: Request, res: Response) => {
             }
         });
 
+        const clienteNormalizado = await obtenerClienteNormalizado(id);
+
         res.json({
             success: true,
             message: `Cliente ${cliente.estado ? 'activado' : 'desactivado'} exitosamente`,
-            cliente
+            cliente: clienteNormalizado
         });
     } catch (error) {
         console.error('Error al cambiar estado del cliente:', error);

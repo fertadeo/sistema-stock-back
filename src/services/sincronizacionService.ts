@@ -2,10 +2,16 @@ import { AppDataSource } from '../config/database';
 import { OperacionPendiente, TipoOperacion, EstadoSincronizacion } from '../entities/OperacionPendiente';
 import { RepartidorRapidoService } from './repartidorRapidoService';
 import { MovimientoEnvase, TipoMovimientoEnvase } from '../entities/MovimientoEnvase';
+import { Clientes } from '../entities/Clientes';
+import { EnvasesPrestados } from '../entities/EnvasesPrestados';
+import { MovimientoService } from './movimientoService';
+import { Productos } from '../entities/Productos';
+import { Zona } from '../entities/Zona';
 
 export class SincronizacionService {
     private operacionPendienteRepository = AppDataSource.getRepository(OperacionPendiente);
     private repartidorRapidoService = new RepartidorRapidoService();
+    private movimientoService = new MovimientoService();
 
     /**
      * Recibe y procesa operaciones pendientes desde el cliente
@@ -112,6 +118,24 @@ export class SincronizacionService {
      */
     private async procesarOperacion(tipo: TipoOperacion, datos: Record<string, any>) {
         switch (tipo) {
+            case TipoOperacion.NUEVO_CLIENTE:
+                return await this.procesarNuevoCliente(datos as {
+                    dni?: string;
+                    nombre: string;
+                    email?: string;
+                    telefono?: string;
+                    direccion?: string;
+                    latitud?: number | string | null;
+                    longitud?: number | string | null;
+                    zona?: number;
+                    repartidor?: string;
+                    dia_reparto?: string;
+                    envases_prestados?: Array<{
+                        producto_id: number;
+                        cantidad: number;
+                    }>;
+                });
+
             case TipoOperacion.VENTA_RAPIDA:
                 return await this.repartidorRapidoService.registrarVentaRapida(datos as {
                     cliente_id: number;
@@ -177,6 +201,133 @@ export class SincronizacionService {
 
             default:
                 throw new Error(`Tipo de operación no soportado: ${tipo}`);
+        }
+    }
+
+    private async procesarNuevoCliente(datos: {
+        dni?: string;
+        nombre: string;
+        email?: string;
+        telefono?: string;
+        direccion?: string;
+        latitud?: number | string | null;
+        longitud?: number | string | null;
+        zona?: number;
+        repartidor?: string;
+        dia_reparto?: string;
+        envases_prestados?: Array<{
+            producto_id: number;
+            cantidad: number;
+        }>;
+    }) {
+        if (!datos.nombre || typeof datos.nombre !== 'string' || !datos.nombre.trim()) {
+            throw new Error('El nombre del cliente es obligatorio');
+        }
+
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            if (datos.dni) {
+                const clienteExistente = await queryRunner.manager.findOne(Clientes, {
+                    where: { dni: datos.dni }
+                });
+
+                if (clienteExistente) {
+                    throw new Error('Ya existe un cliente con este DNI');
+                }
+            }
+
+            if (datos.zona !== undefined) {
+                const zonaExistente = await queryRunner.manager.findOne(Zona, {
+                    where: { id: datos.zona }
+                });
+
+                if (!zonaExistente) {
+                    throw new Error('La zona especificada no existe');
+                }
+            }
+
+            const cliente = queryRunner.manager.create(Clientes, {
+                dni: datos.dni || '',
+                nombre: datos.nombre.trim(),
+                email: datos.email || '',
+                telefono: datos.telefono || '',
+                direccion: datos.direccion || '',
+                latitud: datos.latitud !== undefined && datos.latitud !== null && datos.latitud !== ''
+                    ? Number(datos.latitud)
+                    : null,
+                longitud: datos.longitud !== undefined && datos.longitud !== null && datos.longitud !== ''
+                    ? Number(datos.longitud)
+                    : null,
+                zona: datos.zona ? ({ id: datos.zona } as Zona) : undefined,
+                fecha_alta: new Date(),
+                estado: true,
+                repartidor: datos.repartidor || '',
+                dia_reparto: datos.dia_reparto || ''
+            });
+
+            const clienteGuardado = await queryRunner.manager.save(cliente);
+
+            if (datos.envases_prestados?.length) {
+                for (const envase of datos.envases_prestados) {
+                    const cantidad = Number(envase.cantidad);
+                    if (Number.isNaN(cantidad) || cantidad <= 0) {
+                        throw new Error(`Cantidad inválida para producto ${envase.producto_id}`);
+                    }
+
+                    const producto = await queryRunner.manager.findOne(Productos, {
+                        where: { id: envase.producto_id }
+                    });
+
+                    if (!producto) {
+                        throw new Error(`Producto con ID ${envase.producto_id} no encontrado`);
+                    }
+
+                    const envasePrestado = queryRunner.manager.create(EnvasesPrestados, {
+                        cliente_id: clienteGuardado.id,
+                        producto_id: envase.producto_id,
+                        producto_nombre: producto.nombreProducto,
+                        capacidad: this.extraerCapacidad(producto.nombreProducto),
+                        cantidad
+                    });
+
+                    await queryRunner.manager.save(envasePrestado);
+
+                    const movimientoEnvase = queryRunner.manager.create(MovimientoEnvase, {
+                        cliente_id: clienteGuardado.id,
+                        producto_id: envase.producto_id,
+                        producto_nombre: producto.nombreProducto,
+                        capacidad: this.extraerCapacidad(producto.nombreProducto),
+                        cantidad,
+                        tipo: TipoMovimientoEnvase.PRESTAMO,
+                        observaciones: 'Alta offline de cliente'
+                    });
+
+                    await queryRunner.manager.save(movimientoEnvase);
+                }
+            }
+
+            await queryRunner.commitTransaction();
+
+            try {
+                await this.movimientoService.registrarNuevoCliente(clienteGuardado.nombre, {
+                    cliente_id: clienteGuardado.id,
+                    direccion: clienteGuardado.direccion,
+                    telefono: clienteGuardado.telefono,
+                    origen: 'sincronizacion_offline'
+                });
+            } catch (error) {
+                console.error('Error al registrar movimiento de nuevo cliente offline:', error);
+            }
+
+            return clienteGuardado;
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
         }
     }
 

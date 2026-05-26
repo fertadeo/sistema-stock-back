@@ -179,6 +179,99 @@ export const movimientoController = {
         }
     },
 
+    // Dashboard gastos/ingresos: totales, datos diarios para gráfico, últimos movimientos
+    obtenerDashboard: async (req: Request, res: Response) => {
+        try {
+            const { fechaInicio, fechaFin } = req.query;
+
+            if (!fechaInicio || !fechaFin) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Se requieren fechaInicio y fechaFin (formato ISO o YYYY-MM-DD)'
+                });
+            }
+
+            const inicio = new Date(fechaInicio as string);
+            const fin = new Date(fechaFin as string);
+
+            const movimientos = await movimientoRepository.find({
+                where: {
+                    fecha: Between(inicio, fin),
+                    activo: true
+                },
+                order: { fecha: 'DESC' }
+            });
+
+            const TIPOS_INGRESO: TipoMovimiento[] = [
+                TipoMovimiento.VENTA_LOCAL,
+                TipoMovimiento.CIERRE_VENTA,
+                TipoMovimiento.RENDICION
+            ];
+
+            let totalIngresos = 0;
+            let totalGastos = 0;
+            const porDia: Record<string, { ingresos: number; gastos: number }> = {};
+            const ingresosList: Array<{ id: number; descripcion: string; monto: number; fecha: string }> = [];
+            const gastosList: Array<{ id: number; descripcion: string; monto: number; fecha: string }> = [];
+
+            for (const mov of movimientos) {
+                const monto = Number(mov.monto ?? 0);
+                const fechaStr = new Date(mov.fecha).toISOString().slice(0, 10);
+
+                if (mov.tipo === TipoMovimiento.GASTO) {
+                    totalGastos += Math.abs(monto);
+                    if (!porDia[fechaStr]) porDia[fechaStr] = { ingresos: 0, gastos: 0 };
+                    porDia[fechaStr].gastos += Math.abs(monto);
+                    if (gastosList.length < 5) {
+                        gastosList.push({
+                            id: mov.id,
+                            descripcion: mov.descripcion,
+                            monto: Math.abs(monto),
+                            fecha: mov.fecha instanceof Date ? mov.fecha.toISOString() : String(mov.fecha)
+                        });
+                    }
+                } else if (TIPOS_INGRESO.includes(mov.tipo) && monto > 0) {
+                    totalIngresos += monto;
+                    if (!porDia[fechaStr]) porDia[fechaStr] = { ingresos: 0, gastos: 0 };
+                    porDia[fechaStr].ingresos += monto;
+                    if (ingresosList.length < 5) {
+                        ingresosList.push({
+                            id: mov.id,
+                            descripcion: mov.descripcion,
+                            monto,
+                            fecha: mov.fecha instanceof Date ? mov.fecha.toISOString() : String(mov.fecha)
+                        });
+                    }
+                }
+            }
+
+            const datosGrafico = Object.entries(porDia)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([fecha, valores]) => ({
+                    fecha,
+                    ingresos: valores.ingresos,
+                    gastos: valores.gastos
+                }));
+
+            res.json({
+                success: true,
+                periodo: { fechaInicio: inicio.toISOString().slice(0, 10), fechaFin: fin.toISOString().slice(0, 10) },
+                totalIngresos,
+                totalGastos,
+                datosGrafico,
+                ultimosIngresos: ingresosList,
+                ultimosGastos: gastosList
+            });
+        } catch (error) {
+            console.error('Error al obtener dashboard gastos/ingresos:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener el dashboard',
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    },
+
     // Obtener resumen de movimientos
     obtenerResumen: async (req: Request, res: Response) => {
         try {

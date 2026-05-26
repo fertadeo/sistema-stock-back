@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 export enum TipoOperacion {
+    NUEVO_CLIENTE = 'NUEVO_CLIENTE',
     VENTA_RAPIDA = 'VENTA_RAPIDA',
     COBRO_RAPIDO = 'COBRO_RAPIDO',
     FIADO_RAPIDO = 'FIADO_RAPIDO',

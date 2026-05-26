@@ -184,19 +184,18 @@ export class RepartidorRapidoService {
 
             const cobroGuardado = await queryRunner.manager.save(cobro);
 
-            // Registrar movimiento en el sistema de auditoría
-            await this.movimientoService.registrarMovimiento({
-                tipo: 'VENTA_LOCAL' as any,
-                descripcion: `Cobro a ${cliente.nombre} por $${data.monto}`,
-                monto: data.monto,
-                detalles: {
+            // Registrar cobros con un tipo propio para no mezclarlos con ventas en métricas.
+            await this.movimientoService.registrarCobroCliente(
+                data.monto,
+                cliente.nombre,
+                {
                     cobro_id: cobroGuardado.id,
                     cliente_id: data.cliente_id,
                     repartidor_id: data.repartidor_id,
                     medio_pago: data.medio_pago,
                     venta_relacionada_id: data.venta_relacionada_id
                 }
-            });
+            );
 
             await queryRunner.commitTransaction();
 

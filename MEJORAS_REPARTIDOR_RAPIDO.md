@@ -198,6 +198,7 @@ Sistema de alertas para clientes con fiados vencidos o montos altos pendientes.
 - Validación de datos antes de sincronizar
 - Detección de duplicados
 - Reintento automático de operaciones fallidas
+- Alta offline inicial de clientes nuevos mediante `NUEVO_CLIENTE`
 - Ver más detalles en `GUIA_MODO_OFFLINE.md`
 
 ## Instalación

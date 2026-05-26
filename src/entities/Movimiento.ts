@@ -3,6 +3,7 @@ import { User } from './User';
 
 export enum TipoMovimiento {
     VENTA_LOCAL = 'VENTA_LOCAL',
+    COBRO_CLIENTE = 'COBRO_CLIENTE',
     GASTO = 'GASTO',
     NUEVO_CLIENTE = 'NUEVO_CLIENTE',
     NUEVO_PRODUCTO = 'NUEVO_PRODUCTO',

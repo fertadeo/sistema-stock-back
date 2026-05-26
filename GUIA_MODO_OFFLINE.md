@@ -62,6 +62,7 @@ Envía un lote de operaciones pendientes para sincronizar.
 ```
 
 **Tipos de Operación:**
+- `NUEVO_CLIENTE`: Alta offline de un cliente nuevo
 - `VENTA_RAPIDA`: Venta completa con productos y pagos
 - `COBRO_RAPIDO`: Cobro independiente
 - `FIADO_RAPIDO`: Venta a crédito

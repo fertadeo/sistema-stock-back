@@ -3,6 +3,9 @@ import { Venta } from "../entities/Venta";
 import { Cobro } from "../entities/Cobro";
 import { Between } from "typeorm";
 
+const MEDIOS_PAGO_VALIDOS = ['efectivo', 'transferencia', 'debito', 'credito'] as const;
+const FORMAS_PAGO_VALIDAS = ['total', 'parcial'] as const;
+
 export class VentaService {
     private ventaRepository = AppDataSource.getRepository(Venta);
     private cobroRepository = AppDataSource.getRepository(Cobro);
@@ -60,16 +63,29 @@ export class VentaService {
             throw new Error('Los productos son requeridos y deben ser un array');
         }
 
-        if (!ventaData.monto_total) {
-            throw new Error('El monto total es requerido');
+        const montoTotal = Number(ventaData.monto_total);
+        if (!ventaData.monto_total || Number.isNaN(montoTotal) || montoTotal <= 0) {
+            throw new Error('El monto total debe ser un número mayor a 0');
         }
 
-        if (!['efectivo', 'transferencia'].includes(ventaData.medio_pago ?? '')) {
+        if (!MEDIOS_PAGO_VALIDOS.includes((ventaData.medio_pago ?? '') as typeof MEDIOS_PAGO_VALIDOS[number])) {
             throw new Error('Medio de pago inválido');
         }
 
-        if (!['total', 'parcial'].includes(ventaData.forma_pago ?? '')) {
+        if (!FORMAS_PAGO_VALIDAS.includes((ventaData.forma_pago ?? '') as typeof FORMAS_PAGO_VALIDAS[number])) {
             throw new Error('Forma de pago inválida');
+        }
+
+        if (ventaData.forma_pago === 'parcial') {
+            const saldoMonto = Number(ventaData.saldo_monto);
+
+            if (!ventaData.saldo_monto || Number.isNaN(saldoMonto) || saldoMonto <= 0) {
+                throw new Error('El monto del saldo debe ser un número mayor a 0');
+            }
+
+            if (saldoMonto > montoTotal) {
+                throw new Error('El monto del saldo no puede ser mayor al monto total');
+            }
         }
     }
 
@@ -86,10 +102,16 @@ export class VentaService {
     }
 
     private agruparVentasPorMedioPago(ventas: Venta[]) {
-        return {
-            efectivo: ventas.filter(v => v.medio_pago === 'efectivo').length,
-            transferencia: ventas.filter(v => v.medio_pago === 'transferencia').length
-        };
+        return ventas.reduce((acc, venta) => {
+            const medioPago = venta.medio_pago;
+            acc[medioPago] = (acc[medioPago] || 0) + 1;
+            return acc;
+        }, {
+            efectivo: 0,
+            transferencia: 0,
+            debito: 0,
+            credito: 0
+        } as Record<string, number>);
     }
 
     /**

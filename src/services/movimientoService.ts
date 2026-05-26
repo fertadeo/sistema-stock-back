@@ -45,6 +45,15 @@ export class MovimientoService {
         });
     }
 
+    async registrarCobroCliente(monto: number, nombreCliente: string, detalles?: Record<string, any>): Promise<Movimiento> {
+        return this.registrarMovimiento({
+            tipo: TipoMovimiento.COBRO_CLIENTE,
+            descripcion: `Cobro a ${nombreCliente} por $${monto}`,
+            monto,
+            detalles
+        });
+    }
+
     async registrarGasto(monto: number, concepto: string, detalles?: Record<string, any>): Promise<Movimiento> {
         return this.registrarMovimiento({
             tipo: TipoMovimiento.GASTO,

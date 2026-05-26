@@ -11,13 +11,31 @@ const movimientoService = new MovimientoService();
 export class VentaController {
     private ventaService = new VentaService();
 
+    private esErrorDeValidacionVenta(error: unknown): error is Error {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+
+        return [
+            'Los productos son requeridos y deben ser un array',
+            'El monto total debe ser un número mayor a 0',
+            'Medio de pago inválido',
+            'Forma de pago inválida',
+            'El monto del saldo es requerido para pagos parciales',
+            'El monto del saldo debe ser un número mayor a 0',
+            'El monto del saldo no puede ser mayor al monto total'
+        ].includes(error.message);
+    }
+
     crearVenta = async (req: Request, res: Response) => {
         try {
             const ventaData = req.body;
             const nuevaVenta = await this.ventaService.crearVenta(ventaData);
             res.status(201).json(nuevaVenta);
         } catch (error) {
-            res.status(500).json({ 
+            const status = this.esErrorDeValidacionVenta(error) ? 400 : 500;
+
+            res.status(status).json({ 
                 message: "Error al crear la venta",
                 error: error instanceof Error ? error.message : 'Error desconocido'
             });
@@ -99,10 +117,11 @@ export class VentaController {
                 cliente_id,
                 nombre_cliente,
                 telefono_cliente,
-                metodo_pago,
                 forma_pago = 'total',
+                saldo_monto,
                 observaciones
             } = req.body;
+            const medio_pago = req.body.medio_pago ?? req.body.metodo_pago;
             
             // Validar datos requeridos
             if (!productos || !Array.isArray(productos) || productos.length === 0) {
@@ -119,6 +138,13 @@ export class VentaController {
                 });
             }
 
+            if (!medio_pago) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El medio_pago es obligatorio'
+                });
+            }
+
             // Crear la venta con los datos mejorados
             const venta = await this.ventaService.crearVenta({
                 tipo: 'LOCAL',
@@ -126,8 +152,9 @@ export class VentaController {
                 cliente_id,
                 nombre_cliente,
                 telefono_cliente,
-                medio_pago: metodo_pago,
+                medio_pago,
                 forma_pago,
+                saldo_monto,
                 observaciones,
                 productos: productos.map(p => ({
                     producto_id: p.producto_id,
@@ -147,7 +174,8 @@ export class VentaController {
                     cliente_id,
                     nombre_cliente,
                     telefono_cliente,
-                    metodo_pago
+                    medio_pago,
+                    saldo_monto
                 }
             );
 
@@ -158,7 +186,9 @@ export class VentaController {
             });
         } catch (error) {
             console.error('Error al crear venta:', error);
-            res.status(500).json({
+            const status = this.esErrorDeValidacionVenta(error) ? 400 : 500;
+
+            res.status(status).json({
                 success: false,
                 message: 'Error al registrar la venta',
                 error: error instanceof Error ? error.message : 'Error desconocido'
