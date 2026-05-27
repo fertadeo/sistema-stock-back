@@ -13,9 +13,25 @@ const parseClienteId = (clienteIdParam: string): number => {
   return clienteId;
 };
 
+const parseQueryNumber = (valor: unknown, valorPorDefecto: number): number => {
+  const valorNormalizado = Array.isArray(valor) ? valor[0] : valor;
+
+  if (
+    valorNormalizado === undefined ||
+    valorNormalizado === null ||
+    valorNormalizado === '' ||
+    valorNormalizado === 'undefined' ||
+    valorNormalizado === 'null'
+  ) {
+    return valorPorDefecto;
+  }
+
+  return parseInt(String(valorNormalizado), 10);
+};
+
 const parsePagination = (req: Request) => {
-  const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+  const page = parseQueryNumber(req.query.page, 1);
+  const limit = parseQueryNumber(req.query.limit, 20);
 
   if (Number.isNaN(page) || page <= 0) {
     throw new Error('El parámetro page debe ser un número mayor a 0');
@@ -73,6 +89,8 @@ const responderError = (res: Response, error: unknown, mensajePorDefecto: string
       });
     }
   }
+
+  console.error(`[CuentaCorrienteController] ${mensajePorDefecto}:`, error);
 
   return res.status(500).json({
     success: false,

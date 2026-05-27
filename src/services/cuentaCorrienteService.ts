@@ -50,6 +50,17 @@ const movimientoService = new MovimientoService();
 const redondearMonto = (valor: number): number => Math.round(valor * 100) / 100;
 
 const serializarFecha = (fecha: Date | string): string => new Date(fecha).toISOString();
+const normalizarTexto = (valor: unknown): string => {
+  if (typeof valor === 'string') {
+    return valor;
+  }
+
+  if (valor === null || valor === undefined) {
+    return '';
+  }
+
+  return String(valor);
+};
 
 const compararMovimientos = (
   a: { fecha: string; origen: 'VENTA' | 'COBRO'; referencia_id: string },
@@ -414,7 +425,7 @@ export class CuentaCorrienteService {
       }
     }
 
-    const termino = (filtros.search || '').trim().toLowerCase();
+    const termino = normalizarTexto(filtros.search).trim().toLowerCase();
 
     const deudores = clientes
       .filter((cliente) => {
@@ -423,6 +434,7 @@ export class CuentaCorrienteService {
         }
 
         return [cliente.nombre, cliente.telefono, cliente.direccion]
+          .map((valor) => normalizarTexto(valor).toLowerCase())
           .filter(Boolean)
           .some((valor) => valor.toLowerCase().includes(termino));
       })
@@ -430,16 +442,21 @@ export class CuentaCorrienteService {
         const totalDebitos = debitosPorCliente.get(cliente.id) || 0;
         const totalCreditos = creditosPorCliente.get(cliente.id) || 0;
         const saldoActual = redondearMonto(totalDebitos - totalCreditos);
+        const nombre = normalizarTexto(cliente.nombre);
+        const telefono = normalizarTexto(cliente.telefono);
+        const direccion = normalizarTexto(cliente.direccion);
+        const repartidor = normalizarTexto(cliente.repartidor);
+        const diaReparto = normalizarTexto(cliente.dia_reparto);
 
         return {
           cliente_id: cliente.id,
-          nombre: cliente.nombre,
-          telefono: cliente.telefono,
-          direccion: cliente.direccion,
+          nombre,
+          telefono,
+          direccion,
           estado: cliente.estado,
           zona: cliente.zona?.id ?? null,
-          repartidor: cliente.repartidor,
-          dia_reparto: cliente.dia_reparto,
+          repartidor,
+          dia_reparto: diaReparto,
           saldo_actual: saldoActual,
           total_debitos: redondearMonto(totalDebitos),
           total_creditos: redondearMonto(totalCreditos),
@@ -455,7 +472,7 @@ export class CuentaCorrienteService {
           return b.saldo_actual - a.saldo_actual;
         }
 
-        return a.nombre.localeCompare(b.nombre);
+        return normalizarTexto(a.nombre).localeCompare(normalizarTexto(b.nombre));
       });
 
     const total = deudores.length;
