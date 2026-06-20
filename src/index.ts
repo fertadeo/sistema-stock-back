@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 import express from 'express';
 import colors from 'colors';
-import { initializeDatabase, AppDataSource } from './config/database';
-import { User } from './entities/User';
+import { initializeDatabase } from './config/database';
 import clientesRoutes from './routes/clientesRoutes';
 import { corsMiddleware } from './middlewares/cors';
+import { authenticateToken } from './middlewares/auth';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/userRoutes';
 import productosRoutes from './routes/productRoutes';
@@ -29,6 +29,17 @@ const port = 8080;
 app.use(express.json());
 app.use(corsMiddleware);
 
+app.use((req, res, next) => {
+  const path = req.originalUrl.split('?')[0];
+  if (path === '/api/auth/login') {
+    return next();
+  }
+  if (path.startsWith('/api/')) {
+    return authenticateToken(req, res, next);
+  }
+  return next();
+});
+
 // Rutas
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -48,22 +59,8 @@ app.use('/api/metricas', metricasRoutes);
 app.use('/api/repartidor-rapido', repartidorRapidoRoutes);
 app.use('/api/sincronizacion', sincronizacionRoutes);
 
-// Rutas adicionales
 app.get('/', (req, res) => {
   res.send('¡Hola, mundo!');
-});
-
-app.get('/users', async (req, res) => {
-  const userRepository = AppDataSource.getRepository(User);
-  const users = await userRepository.find();
-  res.json(users);
-});
-
-app.post('/users', async (req, res) => {
-  const userRepository = AppDataSource.getRepository(User);
-  const user = userRepository.create(req.body);
-  const result = await userRepository.save(user);
-  res.send(result);
 });
 
 // Inicialización de la base de datos y arranque del servidor

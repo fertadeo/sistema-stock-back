@@ -1,28 +1,71 @@
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
+import cookie from 'cookie';
 import { Request, Response, NextFunction } from 'express';
+import { UserRole, isValidRole } from '../constants/roles';
 
-dotenv.config();
+export const JWT_SECRET = process.env.JWT_SECRET || 'secret_key';
 
-interface AuthRequest extends Request {
-  user?: string | jwt.JwtPayload;
+export interface AuthUserPayload {
+  id: number;
+  email: string;
+  role: UserRole;
+  repartidor_id?: string | null;
 }
 
+export interface AuthRequest extends Request {
+  user?: AuthUserPayload;
+}
+
+const extractToken = (req: Request): string | null => {
+  const headerToken = req.header('Authorization')?.replace(/^Bearer\s+/i, '');
+  if (headerToken) {
+    return headerToken;
+  }
+
+  const cookies = cookie.parse(req.headers.cookie || '');
+  return cookies.token || null;
+};
+
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
+  const token = extractToken(req);
 
   if (!token) {
-    return res.status(401).json({ message: 'No token, authorization denied' });
+    return res.status(401).json({ message: 'No autenticado' });
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as jwt.JwtPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload;
 
-    req.user = decoded;
-    console.log(decoded)
+    if (!decoded.id || !decoded.email || !decoded.role || !isValidRole(String(decoded.role))) {
+      return res.status(401).json({ message: 'Token inválido' });
+    }
+
+    req.user = {
+      id: Number(decoded.id),
+      email: String(decoded.email),
+      role: decoded.role as UserRole,
+      repartidor_id: decoded.repartidor_id ? String(decoded.repartidor_id) : null,
+    };
 
     next();
-  } catch (error) {
-    return res.status(401).json({ message: 'Invalid or expired token' });
+  } catch {
+    return res.status(401).json({ message: 'Token inválido o expirado' });
   }
 };
+
+export const requireRole = (...roles: UserRole[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'No autenticado' });
+    }
+
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'No tiene permisos para esta acción' });
+    }
+
+    next();
+  };
+};
+
+export const signUserToken = (payload: AuthUserPayload): string =>
+  jwt.sign(payload, JWT_SECRET, { expiresIn: '12h' });
