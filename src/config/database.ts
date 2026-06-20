@@ -56,10 +56,13 @@ console.log({
   DB_NAME: isProduction ? process.env.DB_NAME_PROD : process.env.DB_NAME_DEV,
 });
 
+import { runPendingMigrations } from './runMigrations';
+
 export const initializeDatabase = async () => {
   try {
     await AppDataSource.initialize();
     console.log('Conexión a la base de datos establecida');
+    await runPendingMigrations(AppDataSource);
   } catch (error) {
     console.error('Error al conectar con la base de datos', error);
     process.exit(1); 

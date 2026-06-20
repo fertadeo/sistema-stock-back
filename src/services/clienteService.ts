@@ -64,7 +64,12 @@ function calcularPuntuacionRelevancia(cliente: any, termino: string): number {
 /**
  * Transforma un cliente de la entidad al formato esperado por el frontend.
  */
-async function transformarCliente(cliente: Clientes): Promise<any> {
+async function transformarCliente(
+  cliente: Clientes,
+  opciones: { incluirVinculacion?: boolean } = {}
+): Promise<any> {
+  const incluirVinculacion = opciones.incluirVinculacion ?? true;
+
   const transformado: any = {
     id: cliente.id,
     dni: cliente.dni,
@@ -85,11 +90,21 @@ async function transformarCliente(cliente: Clientes): Promise<any> {
     transformado.zona = cliente.zona.id;
   }
 
-  const vinculado = await clienteVinculacionService.obtenerVinculado(cliente.id);
-  transformado.cliente_vinculado = vinculado;
+  if (incluirVinculacion && cliente.cliente_vinculado_id) {
+    try {
+      const vinculado = await clienteVinculacionService.obtenerVinculado(cliente.id);
+      transformado.cliente_vinculado = vinculado;
 
-  const domicilio = await clienteVinculacionService.obtenerResumenDomicilio(cliente.id);
-  transformado.resumen_domicilio = domicilio;
+      const domicilio = await clienteVinculacionService.obtenerResumenDomicilio(cliente.id);
+      transformado.resumen_domicilio = domicilio;
+    } catch {
+      transformado.cliente_vinculado = null;
+      transformado.resumen_domicilio = null;
+    }
+  } else {
+    transformado.cliente_vinculado = null;
+    transformado.resumen_domicilio = null;
+  }
 
   return transformado;
 }
@@ -122,7 +137,7 @@ export const clientesService = {
       .sort((a, b) => b.puntuacion - a.puntuacion);
 
     const resultados = await Promise.all(
-      conPuntuacion.map((item) => transformarCliente(item.cliente))
+      conPuntuacion.map((item) => transformarCliente(item.cliente, { incluirVinculacion: false }))
     );
 
     return resultados;
@@ -152,7 +167,9 @@ export const clientesService = {
     const clientes = await clienteRepository.find({
       relations: ['envases_prestados', 'zona'],
     });
-    return Promise.all(clientes.map((cliente) => transformarCliente(cliente)));
+    return Promise.all(
+      clientes.map((cliente) => transformarCliente(cliente, { incluirVinculacion: false }))
+    );
   },
 
   createCliente: async (clienteData: Partial<Clientes>): Promise<Clientes> => {
