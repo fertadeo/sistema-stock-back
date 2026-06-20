@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn, OneToOne } from 'typeorm';
 import { EnvasesPrestados } from './EnvasesPrestados';
 import { Zona } from './Zona';
 
@@ -43,6 +43,13 @@ export class Clientes {
 
   @Column()
     dia_reparto: string = '';
+
+  @Column({ nullable: true })
+    cliente_vinculado_id: number | null = null;
+
+  @OneToOne(() => Clientes, { nullable: true })
+  @JoinColumn({ name: 'cliente_vinculado_id' })
+    cliente_vinculado!: Clientes | null;
 
   @OneToMany(() => EnvasesPrestados, envase => envase.cliente)
     envases_prestados!: EnvasesPrestados[];

@@ -6,6 +6,7 @@ import { EnvasesPrestados } from '../entities/EnvasesPrestados';
 import { Zona } from '../entities/Zona';
 import { Productos } from '../entities/Productos';
 import { MovimientoService } from '../services/movimientoService';
+import { clienteVinculacionService } from '../services/clienteVinculacionService';
 
 interface EnvasePrestado {
   producto_id: number;
@@ -599,23 +600,20 @@ export const toggleEstadoCliente = async (req: Request, res: Response) => {
         const id = parseInt(req.params.id);
         const { estado } = req.body;
 
-        // Verificar que el cliente existe
         const cliente = await clienteRepository.findOne({
             where: { id }
         });
 
         if (!cliente) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                message: 'Cliente no encontrado' 
+                message: 'Cliente no encontrado'
             });
         }
 
-        // Actualizar el estado
         cliente.estado = estado !== undefined ? estado : !cliente.estado;
         await clienteRepository.save(cliente);
 
-        // Registrar movimiento
         await movimientoService.registrarMovimiento({
             tipo: 'MODIFICACION_CLIENTE' as any,
             descripcion: `Cliente ${cliente.nombre} ${cliente.estado ? 'activado' : 'desactivado'}`,
@@ -635,10 +633,95 @@ export const toggleEstadoCliente = async (req: Request, res: Response) => {
         });
     } catch (error) {
         console.error('Error al cambiar estado del cliente:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
             message: 'Error al cambiar el estado del cliente',
             error: error instanceof Error ? error.message : 'Error desconocido'
+        });
+    }
+};
+
+export const vincularCliente = async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { cliente_vinculado_id } = req.body;
+
+        if (isNaN(id)) {
+            return res.status(400).json({ success: false, message: 'ID de cliente inválido' });
+        }
+
+        const otroId = Number(cliente_vinculado_id);
+        if (!otroId || isNaN(otroId)) {
+            return res.status(400).json({ success: false, message: 'Debe indicar el cliente a vincular' });
+        }
+
+        const resumen = await clienteVinculacionService.vincular(id, otroId);
+        const clienteNormalizado = await obtenerClienteNormalizado(id);
+
+        res.json({
+            success: true,
+            data: {
+                cliente: clienteNormalizado,
+                resumen_domicilio: resumen
+            }
+        });
+    } catch (error) {
+        console.error('Error al vincular clientes:', error);
+        res.status(400).json({
+            success: false,
+            message: error instanceof Error ? error.message : 'Error al vincular clientes'
+        });
+    }
+};
+
+export const desvincularCliente = async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+
+        if (isNaN(id)) {
+            return res.status(400).json({ success: false, message: 'ID de cliente inválido' });
+        }
+
+        await clienteVinculacionService.desvincular(id);
+        const clienteNormalizado = await obtenerClienteNormalizado(id);
+
+        res.json({
+            success: true,
+            message: 'Clientes desvinculados exitosamente',
+            data: { cliente: clienteNormalizado }
+        });
+    } catch (error) {
+        console.error('Error al desvincular clientes:', error);
+        res.status(400).json({
+            success: false,
+            message: error instanceof Error ? error.message : 'Error al desvincular clientes'
+        });
+    }
+};
+
+export const getResumenDomicilio = async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+
+        if (isNaN(id)) {
+            return res.status(400).json({ success: false, message: 'ID de cliente inválido' });
+        }
+
+        const resumen = await clienteVinculacionService.obtenerResumenDomicilio(id);
+
+        if (!resumen) {
+            return res.status(404).json({
+                success: false,
+                message: 'El cliente no tiene vinculación activa'
+            });
+        }
+
+        res.json({ success: true, data: resumen });
+    } catch (error) {
+        console.error('Error al obtener resumen de domicilio:', error);
+        res.status(500).json({
+            success: false,
+            message: error instanceof Error ? error.message : 'Error al obtener resumen de domicilio'
         });
     }
 };

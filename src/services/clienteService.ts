@@ -1,6 +1,7 @@
 import { AppDataSource } from '../config/database';
 import { Clientes } from '../entities/Clientes';
 import { Venta } from '../entities/Venta';
+import { clienteVinculacionService } from './clienteVinculacionService';
 
 const clienteRepository = AppDataSource.getRepository(Clientes);
 const ventaRepository = AppDataSource.getRepository(Venta);
@@ -63,7 +64,7 @@ function calcularPuntuacionRelevancia(cliente: any, termino: string): number {
 /**
  * Transforma un cliente de la entidad al formato esperado por el frontend.
  */
-function transformarCliente(cliente: Clientes): any {
+async function transformarCliente(cliente: Clientes): Promise<any> {
   const transformado: any = {
     id: cliente.id,
     dni: cliente.dni,
@@ -77,11 +78,19 @@ function transformarCliente(cliente: Clientes): any {
     estado: cliente.estado,
     repartidor: cliente.repartidor,
     dia_reparto: cliente.dia_reparto,
+    cliente_vinculado_id: cliente.cliente_vinculado_id ?? null,
     envases_prestados: cliente.envases_prestados || [],
   };
   if (cliente.zona) {
     transformado.zona = cliente.zona.id;
   }
+
+  const vinculado = await clienteVinculacionService.obtenerVinculado(cliente.id);
+  transformado.cliente_vinculado = vinculado;
+
+  const domicilio = await clienteVinculacionService.obtenerResumenDomicilio(cliente.id);
+  transformado.resumen_domicilio = domicilio;
+
   return transformado;
 }
 
@@ -102,14 +111,21 @@ export const clientesService = {
 
     const conPuntuacion = clientes
       .map((cliente) => {
-        const transformado = transformarCliente(cliente);
-        const puntuacion = calcularPuntuacionRelevancia(transformado, termino);
-        return { cliente: transformado, puntuacion };
+        const puntuacion = calcularPuntuacionRelevancia({
+          nombre: cliente.nombre,
+          telefono: cliente.telefono,
+          direccion: cliente.direccion
+        }, termino);
+        return { cliente, puntuacion };
       })
       .filter((item) => item.puntuacion > 0)
       .sort((a, b) => b.puntuacion - a.puntuacion);
 
-    return conPuntuacion.map((item) => item.cliente);
+    const resultados = await Promise.all(
+      conPuntuacion.map((item) => transformarCliente(item.cliente))
+    );
+
+    return resultados;
   },
 
   getClienteById: async (id: number): Promise<any | null> => {
@@ -127,7 +143,7 @@ export const clientesService = {
       order: { fecha_venta: 'DESC' },
     });
 
-    const transformado = transformarCliente(cliente);
+    const transformado = await transformarCliente(cliente);
     transformado.historial_ventas = historial_ventas;
     return transformado;
   },
@@ -136,7 +152,7 @@ export const clientesService = {
     const clientes = await clienteRepository.find({
       relations: ['envases_prestados', 'zona'],
     });
-    return clientes.map(transformarCliente);
+    return Promise.all(clientes.map((cliente) => transformarCliente(cliente)));
   },
 
   createCliente: async (clienteData: Partial<Clientes>): Promise<Clientes> => {

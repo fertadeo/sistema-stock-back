@@ -10,7 +10,10 @@ import {
   getZonas,
   prestarEnvases,
   getEnvasesPrestadosPorCliente,
-  toggleEstadoCliente
+  toggleEstadoCliente,
+  vincularCliente,
+  desvincularCliente,
+  getResumenDomicilio
 } from '../controllers/clienteController';
 import {
   createCobroPorCliente,
@@ -33,6 +36,7 @@ router.get('/deudores', getClientesDeudores);
 router.get('/clientes-por-mes', getClientesPorMes);
 router.get('/getNextClienteId', getNextClienteId);
 router.get('/zonas', getZonas);
+router.get('/:id/domicilio/resumen', getResumenDomicilio);
 router.get('/:id/cuenta-corriente/resumen', getCuentaCorrienteResumen);
 router.get('/:id/cuenta-corriente', getCuentaCorriente);
 router.get('/:id/cobros', getCobrosPorCliente);
@@ -49,6 +53,10 @@ router.delete('/:id', deleteCliente);
 
 // Ruta para activar/desactivar cliente
 router.patch('/:id/estado', toggleEstadoCliente);
+
+// Vinculación de clientes del mismo domicilio
+router.post('/:id/vincular', vincularCliente);
+router.delete('/:id/vincular', desvincularCliente);
 
 // Rutas de envases prestados
 router.post('/envases/prestar', prestarEnvases);
