@@ -20,6 +20,7 @@ import rutasRoutes from './routes/rutasRoutes';
 import movimientoRoutes from './routes/movimientoRoutes';
 import gastoRoutes from './routes/gastoRoutes';
 import metricasRoutes from './routes/metricasRoutes';
+import reportesRoutes from './routes/reportesRoutes';
 import repartidorRapidoRoutes from './routes/repartidorRapidoRoutes';
 import sincronizacionRoutes from './routes/sincronizacionRoutes';
 
@@ -58,6 +59,7 @@ app.use('/api/rutas', rutasRoutes);
 app.use('/api/movimientos', movimientoRoutes);
 app.use('/api/gastos', gastoRoutes);
 app.use('/api/metricas', metricasRoutes);
+app.use('/api/reportes', reportesRoutes);
 app.use('/api/repartidor-rapido', repartidorRapidoRoutes);
 app.use('/api/sincronizacion', sincronizacionRoutes);
 
