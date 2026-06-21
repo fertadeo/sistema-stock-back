@@ -7,6 +7,7 @@ import { Zona } from '../entities/Zona';
 import { Productos } from '../entities/Productos';
 import { MovimientoService } from '../services/movimientoService';
 import { clienteVinculacionService } from '../services/clienteVinculacionService';
+import { geocodeAddress } from '../services/googleMapsService';
 
 interface EnvasePrestado {
   producto_id: number;
@@ -122,40 +123,97 @@ export const getZonas = async (req: Request, res: Response) => {
   }
 };
 
-async function geocodeDireccion(direccion: string): Promise<{ lat: number | null, lon: number | null }> {
-    try {
-        const searchParams = new URLSearchParams({
-            q: `${direccion} Río Cuarto`,
-            format: 'json',
-            limit: '1',
-            viewbox: '-64.4,-33.2,-64.2,-33.0',
-            bounded: '1'
-        });
+async function resolverCoordenadas(
+  direccion: string | undefined,
+  latitud: unknown,
+  longitud: unknown
+): Promise<{ latitud: number | null; longitud: number | null }> {
+  const lat = latitud ? parseFloat(String(latitud)) : null;
+  const lon = longitud ? parseFloat(String(longitud)) : null;
 
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?${searchParams}`, {
-            headers: {
-                'User-Agent': 'SoderiaApp/1.0',
-                'Accept-Language': 'es'
-            }
-        });
+  if (lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon)) {
+    return { latitud: lat, longitud: lon };
+  }
 
-        if (!response.ok) {
-            throw new Error(`Error en la respuesta de Nominatim: ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (data && data.length > 0) {
-            return {
-                lat: parseFloat(data[0].lat),
-                lon: parseFloat(data[0].lon)
-            };
-        }
-        return { lat: null, lon: null };
-    } catch (error) {
-        console.error('Error en geocoding:', error);
-        return { lat: null, lon: null };
+  if (direccion?.trim()) {
+    const geocoded = await geocodeAddress(direccion);
+    if (geocoded.lat !== null && geocoded.lon !== null) {
+      return { latitud: geocoded.lat, longitud: geocoded.lon };
     }
+  }
+
+  return { latitud: lat, longitud: lon };
 }
+
+export const geocodificarPendientes = async (req: Request, res: Response) => {
+  try {
+    const limite = Math.min(parseInt(String(req.body?.limite || 50), 10) || 50, 100);
+
+    const clientesPendientes = await clienteRepository
+      .createQueryBuilder('cliente')
+      .where('cliente.direccion IS NOT NULL')
+      .andWhere("cliente.direccion != ''")
+      .andWhere('(cliente.latitud IS NULL OR cliente.longitud IS NULL)')
+      .limit(limite)
+      .getMany();
+
+    const resultados: Array<{
+      id: number;
+      nombre: string;
+      estado: 'ok' | 'error';
+      latitud?: number | null;
+      longitud?: number | null;
+      mensaje?: string;
+    }> = [];
+
+    for (const cliente of clientesPendientes) {
+      try {
+        const coords = await geocodeAddress(cliente.direccion);
+        if (coords.lat !== null && coords.lon !== null) {
+          await clienteRepository.update(cliente.id, {
+            latitud: coords.lat,
+            longitud: coords.lon,
+          });
+          resultados.push({
+            id: cliente.id,
+            nombre: cliente.nombre,
+            estado: 'ok',
+            latitud: coords.lat,
+            longitud: coords.lon,
+          });
+        } else {
+          resultados.push({
+            id: cliente.id,
+            nombre: cliente.nombre,
+            estado: 'error',
+            mensaje: 'No se encontraron coordenadas para la dirección',
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      } catch (error) {
+        resultados.push({
+          id: cliente.id,
+          nombre: cliente.nombre,
+          estado: 'error',
+          mensaje: error instanceof Error ? error.message : 'Error desconocido',
+        });
+      }
+    }
+
+    res.json({
+      procesados: resultados.length,
+      exitosos: resultados.filter((r) => r.estado === 'ok').length,
+      fallidos: resultados.filter((r) => r.estado === 'error').length,
+      resultados,
+    });
+  } catch (error) {
+    console.error('Error en geocodificación batch:', error);
+    res.status(500).json({
+      message: 'Error al geocodificar clientes pendientes',
+      error: error instanceof Error ? error.message : 'Error desconocido',
+    });
+  }
+};
 
 export const createCliente = async (req: Request, res: Response) => {
     try {
@@ -282,11 +340,11 @@ export const createCliente = async (req: Request, res: Response) => {
             }
         }
 
-        // Convertir las coordenadas a números si existen
-        const coordenadas = {
-            latitud: latitud ? parseFloat(latitud) : null,
-            longitud: longitud ? parseFloat(longitud) : null
-        };
+        const coordenadas = await resolverCoordenadas(
+            datosCliente.direccion,
+            latitud,
+            longitud
+        );
 
         // Crear el cliente con las coordenadas
         const clienteCreado = await clienteRepository.save({
@@ -467,11 +525,11 @@ export const updateCliente = async (req: Request, res: Response) => {
       }
     }
 
-    // Convertir las coordenadas a números si existen
-    const coordenadas = {
-      latitud: latitud ? parseFloat(latitud) : null,
-      longitud: longitud ? parseFloat(longitud) : null
-    };
+    const coordenadas = await resolverCoordenadas(
+      datosCliente.direccion ?? clienteExistente.direccion,
+      latitud,
+      longitud
+    );
 
     // Actualizar el cliente
     await clientesService.updateCliente(id, {

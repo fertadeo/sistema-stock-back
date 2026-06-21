@@ -269,6 +269,31 @@ export class RepartidorRapidoController {
     };
 
     /**
+     * Obtiene los clientes atendidos hoy por el repartidor
+     * GET /api/repartidor-rapido/clientes-atendidos-hoy?repartidor=Nombre
+     */
+    obtenerClientesAtendidosHoy = async (req: Request, res: Response) => {
+        try {
+            const repartidor = typeof req.query.repartidor === 'string' ? req.query.repartidor : undefined;
+            const clienteIds = await repartidorRapidoService.obtenerClientesAtendidosHoy(repartidor);
+
+            res.json({
+                success: true,
+                cliente_ids: clienteIds,
+                total: clienteIds.length,
+                fecha: new Date().toISOString().split('T')[0],
+            });
+        } catch (error) {
+            console.error('Error al obtener clientes atendidos:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener clientes atendidos hoy',
+                error: error instanceof Error ? error.message : 'Error desconocido',
+            });
+        }
+    };
+
+    /**
      * Obtiene el resumen de envases de un cliente
      * GET /api/repartidor-rapido/envases/:cliente_id
      */

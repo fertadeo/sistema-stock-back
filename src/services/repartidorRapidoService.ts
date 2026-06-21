@@ -429,4 +429,93 @@ export class RepartidorRapidoService {
             historial_movimientos: movimientos
         };
     }
+
+    private coincideRepartidorNombre(clienteRepartidor: string, filtro: string): boolean {
+        if (!filtro || filtro === 'todos') return true;
+        if (!clienteRepartidor?.trim()) return false;
+        if (
+            filtro.toLowerCase().includes('david') &&
+            clienteRepartidor.toLowerCase().includes('david')
+        ) {
+            return true;
+        }
+        return clienteRepartidor.trim().toLowerCase() === filtro.trim().toLowerCase();
+    }
+
+    /**
+     * Obtiene los IDs de clientes atendidos hoy (venta, cobro, fiado, envases o visita registrada)
+     */
+    async obtenerClientesAtendidosHoy(repartidorNombre?: string): Promise<number[]> {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const manana = new Date(hoy);
+        manana.setDate(manana.getDate() + 1);
+
+        const ids = new Set<number>();
+
+        const ventas = await this.ventaRepository
+            .createQueryBuilder('v')
+            .select('v.cliente_id', 'cliente_id')
+            .where('v.tipo = :tipo', { tipo: 'REPARTIDOR' })
+            .andWhere('v.fecha_venta >= :hoy', { hoy })
+            .andWhere('v.fecha_venta < :manana', { manana })
+            .andWhere('v.cliente_id IS NOT NULL')
+            .getRawMany();
+
+        for (const row of ventas) {
+            const id = parseInt(row.cliente_id, 10);
+            if (!isNaN(id)) ids.add(id);
+        }
+
+        const cobros = await this.cobroRepository
+            .createQueryBuilder('c')
+            .select('c.cliente_id', 'cliente_id')
+            .where('c.fecha_cobro >= :hoy', { hoy })
+            .andWhere('c.fecha_cobro < :manana', { manana })
+            .getRawMany();
+
+        for (const row of cobros) {
+            ids.add(Number(row.cliente_id));
+        }
+
+        const movimientos = await this.movimientoEnvaseRepository
+            .createQueryBuilder('m')
+            .select('m.cliente_id', 'cliente_id')
+            .where('m.fecha_movimiento >= :hoy', { hoy })
+            .andWhere('m.fecha_movimiento < :manana', { manana })
+            .getRawMany();
+
+        for (const row of movimientos) {
+            ids.add(Number(row.cliente_id));
+        }
+
+        const visitas = await this.visitaNoEncontradoRepository
+            .createQueryBuilder('vn')
+            .select('vn.cliente_id', 'cliente_id')
+            .where('vn.fecha_registro >= :hoy', { hoy })
+            .andWhere('vn.fecha_registro < :manana', { manana })
+            .getRawMany();
+
+        for (const row of visitas) {
+            ids.add(Number(row.cliente_id));
+        }
+
+        if (!repartidorNombre || repartidorNombre === 'todos') {
+            return Array.from(ids);
+        }
+
+        if (ids.size === 0) {
+            return [];
+        }
+
+        const clientes = await this.clienteRepository
+            .createQueryBuilder('cliente')
+            .select(['cliente.id', 'cliente.repartidor'])
+            .where('cliente.id IN (:...ids)', { ids: Array.from(ids) })
+            .getMany();
+
+        return clientes
+            .filter((c) => this.coincideRepartidorNombre(c.repartidor, repartidorNombre))
+            .map((c) => c.id);
+    }
 }

@@ -8,6 +8,7 @@ import {
   getClientesPorMes, 
   getNextClienteId,
   getZonas,
+  geocodificarPendientes,
   prestarEnvases,
   getEnvasesPrestadosPorCliente,
   toggleEstadoCliente,
@@ -36,6 +37,7 @@ router.get('/deudores', getClientesDeudores);
 router.get('/clientes-por-mes', getClientesPorMes);
 router.get('/getNextClienteId', getNextClienteId);
 router.get('/zonas', getZonas);
+router.post('/geocodificar-pendientes', geocodificarPendientes);
 router.get('/:id/domicilio/resumen', getResumenDomicilio);
 router.get('/:id/cuenta-corriente/resumen', getCuentaCorrienteResumen);
 router.get('/:id/cuenta-corriente', getCuentaCorriente);
