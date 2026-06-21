@@ -22,10 +22,10 @@ export class Clientes {
   @Column()
     direccion: string = '';
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
     piso: string | null = null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
     departamento: string | null = null;
 
   @Column({ type: 'decimal', precision: 10, scale: 8, nullable: true })
