@@ -90,6 +90,61 @@ async function migrarVinculacionClientes(dataSource: DataSource): Promise<void> 
   }
 }
 
+async function migrarRepartidorAxelAFernando(dataSource: DataSource): Promise<void> {
+  const [{ total: clientesPendientes }] = await dataSource.query(
+    `SELECT COUNT(*) AS total
+     FROM clientes
+     WHERE LOWER(TRIM(repartidor)) = 'axel torres'`
+  );
+
+  const [{ total: repartidorPendiente }] = await dataSource.query(
+    `SELECT COUNT(*) AS total
+     FROM repartidores
+     WHERE LOWER(TRIM(nombre)) = 'axel torres'`
+  );
+
+  const hayClientes = Number(clientesPendientes ?? 0) > 0;
+  const hayRepartidor = Number(repartidorPendiente ?? 0) > 0;
+
+  if (!hayClientes && !hayRepartidor) {
+    return;
+  }
+
+  console.log('[migrations] Renombrando repartidor Axel Torres → Fernando Tadeo...');
+
+  if (hayClientes) {
+    const resultado = await dataSource.query(
+      `UPDATE clientes
+       SET repartidor = 'Fernando Tadeo'
+       WHERE LOWER(TRIM(repartidor)) = 'axel torres'`
+    );
+    const filas = Number(resultado?.affectedRows ?? clientesPendientes ?? 0);
+    console.log(`[migrations] Clientes actualizados: ${filas}`);
+  }
+
+  if (hayRepartidor) {
+    const [{ total: fernandoExiste }] = await dataSource.query(
+      `SELECT COUNT(*) AS total
+       FROM repartidores
+       WHERE LOWER(TRIM(nombre)) = 'fernando tadeo'`
+    );
+
+    if (Number(fernandoExiste ?? 0) > 0) {
+      console.log(
+        '[migrations] Ya existe un repartidor "Fernando Tadeo"; se omitió renombrar el registro de Axel Torres.'
+      );
+      return;
+    }
+
+    await dataSource.query(
+      `UPDATE repartidores
+       SET nombre = 'Fernando Tadeo'
+       WHERE LOWER(TRIM(nombre)) = 'axel torres'`
+    );
+    console.log('[migrations] Registro en repartidores actualizado.');
+  }
+}
+
 async function migrarRolesUsuario(dataSource: DataSource): Promise<void> {
   if (!(await columnaExiste(dataSource, 'user', 'role'))) {
     console.log('[migrations] Agregando columna user.role...');
@@ -117,6 +172,7 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
 
   await migrarVinculacionClientes(dataSource);
   await migrarRolesUsuario(dataSource);
+  await migrarRepartidorAxelAFernando(dataSource);
 
   console.log('[migrations] Esquema verificado correctamente.');
 }

@@ -35,16 +35,24 @@ console.log(`🔹 DATABASE_URL: ${process.env.DATABASE_URL}`);
 
 
 // Configurar las variables de conexión dependiendo del entorno
+const dbPoolSize = Number(process.env.DB_POOL_SIZE ?? (isProduction ? 10 : 5));
+
 export const AppDataSource = new DataSource({
   type: 'mysql',
   host: isProduction ? process.env.DB_HOST_PROD : process.env.DB_HOST_DEV,
-  port:  3306, 
+  port: 3306,
   username: isProduction ? process.env.DB_USER_PROD : process.env.DB_USER_DEV,
   password: isProduction ? process.env.DB_PASSWORD_PROD : process.env.DB_PASSWORD_DEV,
   database: isProduction ? process.env.DB_NAME_PROD : process.env.DB_NAME_DEV,
   synchronize: false,
   logging: false,
   entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor, Movimiento, Cobro, MovimientoEnvase, OperacionPendiente, VisitaNoEncontrado],
+  extra: {
+    connectionLimit: Number.isFinite(dbPoolSize) && dbPoolSize > 0 ? dbPoolSize : 5,
+    waitForConnections: true,
+    queueLimit: 20,
+  },
+  poolSize: Number.isFinite(dbPoolSize) && dbPoolSize > 0 ? dbPoolSize : 5,
 });
 
 
@@ -60,11 +68,21 @@ import { runPendingMigrations } from './runMigrations';
 
 export const initializeDatabase = async () => {
   try {
+    if (AppDataSource.isInitialized) {
+      return;
+    }
     await AppDataSource.initialize();
-    console.log('Conexión a la base de datos establecida');
+    console.log(`Conexión a la base de datos establecida (pool: ${dbPoolSize})`);
     await runPendingMigrations(AppDataSource);
   } catch (error) {
     console.error('Error al conectar con la base de datos', error);
-    process.exit(1); 
+    process.exit(1);
+  }
+};
+
+export const closeDatabase = async () => {
+  if (AppDataSource.isInitialized) {
+    await AppDataSource.destroy();
+    console.log('Conexión a la base de datos cerrada');
   }
 };
