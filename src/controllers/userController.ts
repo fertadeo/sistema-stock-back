@@ -42,12 +42,20 @@ const canManageUser = (actor: AuthUserPayload, target: User): boolean => {
 const validateRepartidorId = async (repartidorId: string | null | undefined): Promise<string | null> => {
   if (!repartidorId) return null;
 
-  const repartidor = await AppDataSource.getRepository(Repartidor).findOneBy({ id: repartidorId });
+  const idNumerico = Number(repartidorId);
+  if (Number.isNaN(idNumerico)) {
+    throw new Error('Repartidor no encontrado');
+  }
+
+  const repartidor = await AppDataSource.getRepository(Repartidor).findOneBy({
+    id: idNumerico,
+  });
+
   if (!repartidor) {
     throw new Error('Repartidor no encontrado');
   }
 
-  return repartidorId;
+  return String(repartidor.id);
 };
 
 export const getUsers = async (_req: AuthRequest, res: Response) => {

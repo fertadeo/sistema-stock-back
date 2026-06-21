@@ -361,7 +361,7 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
 
     // Verificar que el repartidor existe
     const repartidor = await repartidorRepository.findOne({
-      where: { id: repartidorId.toString() }
+      where: { id: Number(repartidorId) }
     });
 
     if (!repartidor) {

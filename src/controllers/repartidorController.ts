@@ -18,7 +18,8 @@ export class RepartidorController {
 
      obtenerTodos = async (req: Request, res: Response) => {
         try {
-            const repartidores = await this.repartidorService.obtenerRepartidores();
+            const incluirInactivos = req.query.todos === '1' || req.query.todos === 'true';
+            const repartidores = await this.repartidorService.obtenerRepartidores(incluirInactivos);
             res.json(repartidores);
         } catch (error) {
             res.status(500).json({

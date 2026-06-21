@@ -9,16 +9,16 @@ export class RepartidorService {
         return await this.repartidorRepository.save(repartidor);
     }
 
-    async obtenerRepartidores() {
-        return await this.repartidorRepository.find({
-            where: { activo: true },
-            order: { fecha_registro: 'DESC' }
-        });
-    }
+  async obtenerRepartidores(incluirInactivos = false) {
+    return await this.repartidorRepository.find({
+      where: incluirInactivos ? {} : { activo: true },
+      order: { fecha_registro: 'DESC' },
+    });
+  }
 
-    async obtenerRepartidorPorId(id: string): Promise<Repartidor> {
+    async obtenerRepartidorPorId(id: string | number): Promise<Repartidor> {
         const repartidor = await this.repartidorRepository.findOne({
-            where: { id }
+            where: { id: Number(id) }
         });
 
         if (!repartidor) {
