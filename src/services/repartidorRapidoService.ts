@@ -8,6 +8,32 @@ import { VisitaNoEncontrado } from '../entities/VisitaNoEncontrado';
 import { MovimientoService } from './movimientoService';
 import { VentaService } from './ventaService';
 
+const MENSAJE_TABLA_COBROS_FALTANTE =
+    'La tabla cobros no existe en la base de datos. Ejecuta la migración `migrations/crear_tabla_cobros.sql` o `migrations/crear_tablas_repartidor_rapido.sql`.';
+const esErrorTablaFaltante = (error: unknown, tabla: string): boolean => {
+    if (!error || typeof error !== 'object') {
+        return false;
+    }
+
+    const errorBase = error as {
+        code?: string;
+        sql?: string;
+        sqlMessage?: string;
+        message?: string;
+    };
+
+    if (errorBase.code !== 'ER_NO_SUCH_TABLE') {
+        return false;
+    }
+
+    const contenido = [errorBase.sql, errorBase.sqlMessage, errorBase.message]
+        .filter((valor): valor is string => typeof valor === 'string')
+        .join(' ')
+        .toLowerCase();
+
+    return contenido.includes(`\`${tabla.toLowerCase()}\``) || contenido.includes(tabla.toLowerCase());
+};
+
 export class RepartidorRapidoService {
     private ventaRepository = AppDataSource.getRepository(Venta);
     private cobroRepository = AppDataSource.getRepository(Cobro);
@@ -140,6 +166,11 @@ export class RepartidorRapidoService {
             };
         } catch (error) {
             await queryRunner.rollbackTransaction();
+
+            if (esErrorTablaFaltante(error, 'cobros')) {
+                throw new Error(MENSAJE_TABLA_COBROS_FALTANTE);
+            }
+
             throw error;
         } finally {
             await queryRunner.release();

@@ -50,6 +50,8 @@ const movimientoService = new MovimientoService();
 const redondearMonto = (valor: number): number => Math.round(valor * 100) / 100;
 
 const serializarFecha = (fecha: Date | string): string => new Date(fecha).toISOString();
+const MENSAJE_TABLA_COBROS_FALTANTE =
+  'La tabla cobros no existe en la base de datos. Ejecuta la migración `migrations/crear_tabla_cobros.sql` o `migrations/crear_tablas_repartidor_rapido.sql`.';
 const normalizarTexto = (valor: unknown): string => {
   if (typeof valor === 'string') {
     return valor;
@@ -60,6 +62,29 @@ const normalizarTexto = (valor: unknown): string => {
   }
 
   return String(valor);
+};
+const esErrorTablaFaltante = (error: unknown, tabla: string): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const errorBase = error as {
+    code?: string;
+    sql?: string;
+    sqlMessage?: string;
+    message?: string;
+  };
+
+  if (errorBase.code !== 'ER_NO_SUCH_TABLE') {
+    return false;
+  }
+
+  const contenido = [errorBase.sql, errorBase.sqlMessage, errorBase.message]
+    .filter((valor): valor is string => typeof valor === 'string')
+    .join(' ')
+    .toLowerCase();
+
+  return contenido.includes(`\`${tabla.toLowerCase()}\``) || contenido.includes(tabla.toLowerCase());
 };
 
 const compararMovimientos = (
@@ -111,20 +136,31 @@ export class CuentaCorrienteService {
       .getMany();
   }
 
-  private async obtenerCobros(clienteId: number, filtros?: { desde?: Date; hasta?: Date }): Promise<Cobro[]> {
-    const query = cobroRepository
-      .createQueryBuilder('cobro')
-      .where('cobro.cliente_id = :clienteId', { clienteId });
+  private async obtenerCobros(clienteId?: number, filtros?: { desde?: Date; hasta?: Date }): Promise<Cobro[]> {
+    try {
+      const query = cobroRepository.createQueryBuilder('cobro');
 
-    if (filtros?.desde) {
-      query.andWhere('cobro.fecha_cobro >= :desde', { desde: filtros.desde });
+      if (clienteId !== undefined) {
+        query.where('cobro.cliente_id = :clienteId', { clienteId });
+      }
+
+      if (filtros?.desde) {
+        query.andWhere('cobro.fecha_cobro >= :desde', { desde: filtros.desde });
+      }
+
+      if (filtros?.hasta) {
+        query.andWhere('cobro.fecha_cobro <= :hasta', { hasta: filtros.hasta });
+      }
+
+      return query.orderBy('cobro.fecha_cobro', 'DESC').getMany();
+    } catch (error) {
+      if (esErrorTablaFaltante(error, 'cobros')) {
+        console.warn(`[CuentaCorrienteService] ${MENSAJE_TABLA_COBROS_FALTANTE}`);
+        return [];
+      }
+
+      throw error;
     }
-
-    if (filtros?.hasta) {
-      query.andWhere('cobro.fecha_cobro <= :hasta', { hasta: filtros.hasta });
-    }
-
-    return query.orderBy('cobro.fecha_cobro', 'DESC').getMany();
   }
 
   private mapearVentaAMovimiento(venta: Venta): MovimientoCuentaCorriente | null {
@@ -302,6 +338,11 @@ export class CuentaCorrienteService {
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
+
+      if (esErrorTablaFaltante(error, 'cobros')) {
+        throw new Error(MENSAJE_TABLA_COBROS_FALTANTE);
+      }
+
       throw error;
     } finally {
       await queryRunner.release();
@@ -381,7 +422,7 @@ export class CuentaCorrienteService {
         .andWhere("venta.cliente_id <> ''")
         .andWhere('venta.saldo = :saldo', { saldo: true })
         .getMany(),
-      cobroRepository.find()
+      this.obtenerCobros()
     ]);
 
     const debitosPorCliente = new Map<number, number>();

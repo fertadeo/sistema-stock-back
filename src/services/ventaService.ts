@@ -5,10 +5,48 @@ import { Between } from "typeorm";
 
 const MEDIOS_PAGO_VALIDOS = ['efectivo', 'transferencia', 'debito', 'credito'] as const;
 const FORMAS_PAGO_VALIDAS = ['total', 'parcial'] as const;
+const MENSAJE_TABLA_COBROS_FALTANTE =
+    'La tabla cobros no existe en la base de datos. Ejecuta la migración `migrations/crear_tabla_cobros.sql` o `migrations/crear_tablas_repartidor_rapido.sql`.';
+const esErrorTablaFaltante = (error: unknown, tabla: string): boolean => {
+    if (!error || typeof error !== 'object') {
+        return false;
+    }
+
+    const errorBase = error as {
+        code?: string;
+        sql?: string;
+        sqlMessage?: string;
+        message?: string;
+    };
+
+    if (errorBase.code !== 'ER_NO_SUCH_TABLE') {
+        return false;
+    }
+
+    const contenido = [errorBase.sql, errorBase.sqlMessage, errorBase.message]
+        .filter((valor): valor is string => typeof valor === 'string')
+        .join(' ')
+        .toLowerCase();
+
+    return contenido.includes(`\`${tabla.toLowerCase()}\``) || contenido.includes(tabla.toLowerCase());
+};
 
 export class VentaService {
     private ventaRepository = AppDataSource.getRepository(Venta);
     private cobroRepository = AppDataSource.getRepository(Cobro);
+
+    private async obtenerCobrosRegistrados(): Promise<Cobro[]> {
+        try {
+            return await this.cobroRepository.find({ order: { fecha_cobro: 'DESC' } });
+        } catch (error) {
+            if (esErrorTablaFaltante(error, 'cobros')) {
+                console.warn(`[VentaService] ${MENSAJE_TABLA_COBROS_FALTANTE}`);
+                return [];
+            }
+
+            throw error;
+        }
+    }
 
     async crearVenta(ventaData: Partial<Venta>): Promise<Venta> {
         // Validar el formato de los datos
@@ -130,7 +168,7 @@ export class VentaService {
                 order: { fecha_venta: 'DESC' }
             }),
             this.ventaRepository.find({ where: { saldo: true } }),
-            this.cobroRepository.find({ order: { fecha_cobro: 'DESC' } })
+            this.obtenerCobrosRegistrados()
         ]);
 
         // Monto total de ventas
