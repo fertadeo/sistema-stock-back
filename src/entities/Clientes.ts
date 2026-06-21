@@ -22,6 +22,12 @@ export class Clientes {
   @Column()
     direccion: string = '';
 
+  @Column({ nullable: true })
+    piso: string | null = null;
+
+  @Column({ nullable: true })
+    departamento: string | null = null;
+
   @Column({ type: 'decimal', precision: 10, scale: 8, nullable: true })
     latitud: number | null = null;
 

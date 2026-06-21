@@ -77,6 +77,8 @@ async function transformarCliente(
     email: cliente.email,
     telefono: cliente.telefono,
     direccion: cliente.direccion,
+    piso: cliente.piso ?? null,
+    departamento: cliente.departamento ?? null,
     latitud: cliente.latitud != null ? Number(cliente.latitud) : null,
     longitud: cliente.longitud != null ? Number(cliente.longitud) : null,
     fecha_alta: cliente.fecha_alta,

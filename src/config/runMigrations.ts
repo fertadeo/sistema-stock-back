@@ -90,6 +90,26 @@ async function migrarVinculacionClientes(dataSource: DataSource): Promise<void> 
   }
 }
 
+async function migrarPisoDepartamentoClientes(dataSource: DataSource): Promise<void> {
+  if (!(await columnaExiste(dataSource, 'clientes', 'piso'))) {
+    console.log('[migrations] Agregando columna clientes.piso...');
+    await dataSource.query(
+      'ALTER TABLE `clientes` ADD COLUMN `piso` VARCHAR(50) NULL DEFAULT NULL AFTER `direccion`'
+    );
+  } else {
+    console.log('[migrations] clientes.piso ya existe.');
+  }
+
+  if (!(await columnaExiste(dataSource, 'clientes', 'departamento'))) {
+    console.log('[migrations] Agregando columna clientes.departamento...');
+    await dataSource.query(
+      'ALTER TABLE `clientes` ADD COLUMN `departamento` VARCHAR(50) NULL DEFAULT NULL AFTER `piso`'
+    );
+  } else {
+    console.log('[migrations] clientes.departamento ya existe.');
+  }
+}
+
 async function migrarRepartidorAxelAFernando(dataSource: DataSource): Promise<void> {
   const [{ total: clientesPendientes }] = await dataSource.query(
     `SELECT COUNT(*) AS total
@@ -171,6 +191,7 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
   console.log(`[migrations] Verificando esquema en base de datos: ${base}`);
 
   await migrarVinculacionClientes(dataSource);
+  await migrarPisoDepartamentoClientes(dataSource);
   await migrarRolesUsuario(dataSource);
   await migrarRepartidorAxelAFernando(dataSource);
 
