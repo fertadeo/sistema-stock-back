@@ -19,6 +19,7 @@ import { Cobro } from '../entities/Cobro';
 import { MovimientoEnvase } from '../entities/MovimientoEnvase';
 import { OperacionPendiente } from '../entities/OperacionPendiente';
 import { VisitaNoEncontrado } from '../entities/VisitaNoEncontrado';
+import { RepartidorUbicacion } from '../entities/RepartidorUbicacion';
 
 // Determinar si estamos en modo producción o desarrollo
 const isProduction = process.env.NODE_ENV === 'production';
@@ -46,7 +47,7 @@ export const AppDataSource = new DataSource({
   database: isProduction ? process.env.DB_NAME_PROD : process.env.DB_NAME_DEV,
   synchronize: false,
   logging: false,
-  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor, Movimiento, Cobro, MovimientoEnvase, OperacionPendiente, VisitaNoEncontrado],
+  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor, Movimiento, Cobro, MovimientoEnvase, OperacionPendiente, VisitaNoEncontrado, RepartidorUbicacion],
   extra: {
     connectionLimit: Number.isFinite(dbPoolSize) && dbPoolSize > 0 ? dbPoolSize : 5,
     waitForConnections: true,

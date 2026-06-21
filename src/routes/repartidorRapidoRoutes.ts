@@ -19,6 +19,9 @@ router.post('/no-encontrado', repartidorRapidoController.registrarNoEncontrado);
 
 router.get('/clientes-atendidos-hoy', repartidorRapidoController.obtenerClientesAtendidosHoy);
 
+router.post('/ubicacion', repartidorRapidoController.registrarUbicacion);
+router.get('/ubicacion', repartidorRapidoController.obtenerUbicacion);
+
 // Ruta para obtener resumen de envases de un cliente
 router.get('/envases/:cliente_id', repartidorRapidoController.obtenerResumenEnvases);
 

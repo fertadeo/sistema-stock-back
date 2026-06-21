@@ -5,6 +5,8 @@ import { MovimientoEnvase, TipoMovimientoEnvase } from '../entities/MovimientoEn
 import { Clientes } from '../entities/Clientes';
 import { EnvasesPrestados } from '../entities/EnvasesPrestados';
 import { VisitaNoEncontrado } from '../entities/VisitaNoEncontrado';
+import { RepartidorUbicacion } from '../entities/RepartidorUbicacion';
+import { Repartidor } from '../entities/Repartidor';
 import { MovimientoService } from './movimientoService';
 import { VentaService } from './ventaService';
 
@@ -41,6 +43,8 @@ export class RepartidorRapidoService {
     private clienteRepository = AppDataSource.getRepository(Clientes);
     private envasesPrestadosRepository = AppDataSource.getRepository(EnvasesPrestados);
     private visitaNoEncontradoRepository = AppDataSource.getRepository(VisitaNoEncontrado);
+    private repartidorUbicacionRepository = AppDataSource.getRepository(RepartidorUbicacion);
+    private repartidorRepository = AppDataSource.getRepository(Repartidor);
     private ventaService = new VentaService();
     private movimientoService = new MovimientoService();
 
@@ -517,5 +521,91 @@ export class RepartidorRapidoService {
         return clientes
             .filter((c) => this.coincideRepartidorNombre(c.repartidor, repartidorNombre))
             .map((c) => c.id);
+    }
+
+    /**
+     * Guarda o actualiza la ubicación GPS de un repartidor (upsert por repartidor_id)
+     */
+    async guardarUbicacionRepartidor(data: {
+        repartidor_id: number;
+        latitud: number;
+        longitud: number;
+    }): Promise<RepartidorUbicacion> {
+        const repartidor = await this.repartidorRepository.findOne({
+            where: { id: data.repartidor_id },
+        });
+
+        if (!repartidor) {
+            throw new Error('Repartidor no encontrado');
+        }
+
+        const latitud = Number(data.latitud);
+        const longitud = Number(data.longitud);
+
+        if (!Number.isFinite(latitud) || !Number.isFinite(longitud)) {
+            throw new Error('Coordenadas inválidas');
+        }
+
+        if (latitud === 0 && longitud === 0) {
+            throw new Error('Coordenadas inválidas');
+        }
+
+        let ubicacion = await this.repartidorUbicacionRepository.findOne({
+            where: { repartidor_id: data.repartidor_id },
+        });
+
+        if (ubicacion) {
+            ubicacion.latitud = latitud;
+            ubicacion.longitud = longitud;
+            ubicacion.repartidor_nombre = repartidor.nombre;
+        } else {
+            ubicacion = this.repartidorUbicacionRepository.create({
+                repartidor_id: data.repartidor_id,
+                repartidor_nombre: repartidor.nombre,
+                latitud,
+                longitud,
+            });
+        }
+
+        return this.repartidorUbicacionRepository.save(ubicacion);
+    }
+
+    /**
+     * Obtiene la última ubicación conocida de un repartidor por nombre
+     */
+    async obtenerUbicacionRepartidor(repartidorNombre: string): Promise<{
+        repartidor_id: number;
+        repartidor_nombre: string;
+        latitud: number;
+        longitud: number;
+        actualizado_at: Date;
+        en_linea: boolean;
+    } | null> {
+        if (!repartidorNombre?.trim()) {
+            return null;
+        }
+
+        const ubicaciones = await this.repartidorUbicacionRepository.find();
+        const ubicacion = ubicaciones.find((u) =>
+            this.coincideRepartidorNombre(u.repartidor_nombre, repartidorNombre)
+        );
+
+        if (!ubicacion) {
+            return null;
+        }
+
+        const actualizadoAt = new Date(ubicacion.actualizado_at);
+        const minutosDesdeActualizacion =
+            (Date.now() - actualizadoAt.getTime()) / (1000 * 60);
+        const enLinea = minutosDesdeActualizacion <= 120;
+
+        return {
+            repartidor_id: ubicacion.repartidor_id,
+            repartidor_nombre: ubicacion.repartidor_nombre,
+            latitud: Number(ubicacion.latitud),
+            longitud: Number(ubicacion.longitud),
+            actualizado_at: actualizadoAt,
+            en_linea: enLinea,
+        };
     }
 }

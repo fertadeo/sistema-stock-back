@@ -294,6 +294,77 @@ export class RepartidorRapidoController {
     };
 
     /**
+     * Registra la ubicación GPS del repartidor
+     * POST /api/repartidor-rapido/ubicacion
+     */
+    registrarUbicacion = async (req: Request, res: Response) => {
+        try {
+            const { repartidor_id, latitud, longitud } = req.body;
+
+            if (!repartidor_id || latitud == null || longitud == null) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'repartidor_id, latitud y longitud son requeridos',
+                });
+            }
+
+            const ubicacion = await repartidorRapidoService.guardarUbicacionRepartidor({
+                repartidor_id: Number(repartidor_id),
+                latitud: Number(latitud),
+                longitud: Number(longitud),
+            });
+
+            res.json({
+                success: true,
+                data: {
+                    repartidor_id: ubicacion.repartidor_id,
+                    repartidor_nombre: ubicacion.repartidor_nombre,
+                    latitud: Number(ubicacion.latitud),
+                    longitud: Number(ubicacion.longitud),
+                    actualizado_at: ubicacion.actualizado_at,
+                },
+            });
+        } catch (error) {
+            console.error('Error al registrar ubicación:', error);
+            res.status(500).json({
+                success: false,
+                message: error instanceof Error ? error.message : 'Error al registrar ubicación',
+            });
+        }
+    };
+
+    /**
+     * Obtiene la última ubicación de un repartidor
+     * GET /api/repartidor-rapido/ubicacion?repartidor=Nombre
+     */
+    obtenerUbicacion = async (req: Request, res: Response) => {
+        try {
+            const repartidor = typeof req.query.repartidor === 'string' ? req.query.repartidor : undefined;
+
+            if (!repartidor?.trim()) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El parámetro repartidor es requerido',
+                });
+            }
+
+            const ubicacion = await repartidorRapidoService.obtenerUbicacionRepartidor(repartidor);
+
+            res.json({
+                success: true,
+                data: ubicacion,
+            });
+        } catch (error) {
+            console.error('Error al obtener ubicación:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener ubicación del repartidor',
+                error: error instanceof Error ? error.message : 'Error desconocido',
+            });
+        }
+    };
+
+    /**
      * Obtiene el resumen de envases de un cliente
      * GET /api/repartidor-rapido/envases/:cliente_id
      */

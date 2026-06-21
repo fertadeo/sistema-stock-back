@@ -165,6 +165,40 @@ async function migrarRepartidorAxelAFernando(dataSource: DataSource): Promise<vo
   }
 }
 
+async function tablaExiste(dataSource: DataSource, tabla: string): Promise<boolean> {
+  const resultado = await dataSource.query(
+    `SELECT COUNT(*) AS total
+     FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?`,
+    [tabla]
+  );
+
+  const total = resultado[0]?.total;
+  return Number(total ?? 0) > 0;
+}
+
+async function migrarRepartidorUbicaciones(dataSource: DataSource): Promise<void> {
+  if (await tablaExiste(dataSource, 'repartidor_ubicaciones')) {
+    console.log('[migrations] repartidor_ubicaciones ya existe.');
+    return;
+  }
+
+  console.log('[migrations] Creando tabla repartidor_ubicaciones...');
+  await dataSource.query(`
+    CREATE TABLE \`repartidor_ubicaciones\` (
+      \`id\` INT NOT NULL AUTO_INCREMENT,
+      \`repartidor_id\` INT NOT NULL,
+      \`repartidor_nombre\` VARCHAR(100) NOT NULL,
+      \`latitud\` DECIMAL(10, 8) NOT NULL,
+      \`longitud\` DECIMAL(11, 8) NOT NULL,
+      \`actualizado_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      UNIQUE KEY \`uk_repartidor_ubicacion\` (\`repartidor_id\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+}
+
 async function migrarRolesUsuario(dataSource: DataSource): Promise<void> {
   if (!(await columnaExiste(dataSource, 'user', 'role'))) {
     console.log('[migrations] Agregando columna user.role...');
@@ -192,6 +226,7 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
 
   await migrarVinculacionClientes(dataSource);
   await migrarPisoDepartamentoClientes(dataSource);
+  await migrarRepartidorUbicaciones(dataSource);
   await migrarRolesUsuario(dataSource);
   await migrarRepartidorAxelAFernando(dataSource);
 
