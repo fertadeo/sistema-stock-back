@@ -1,4 +1,3 @@
-import { Between } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { Movimiento, TipoMovimiento } from '../entities/Movimiento';
 import { Venta } from '../entities/Venta';
@@ -23,9 +22,25 @@ function toDateKey(d: Date): string {
     return d.toISOString().slice(0, 10);
 }
 
+function parseDetalles(detalles: unknown): Record<string, unknown> {
+    if (!detalles) return {};
+    if (typeof detalles === 'string') {
+        try {
+            return JSON.parse(detalles) as Record<string, unknown>;
+        } catch {
+            return {};
+        }
+    }
+    if (typeof detalles === 'object') {
+        return detalles as Record<string, unknown>;
+    }
+    return {};
+}
+
 function normalizarCategoriaGasto(mov: Movimiento): string {
-    const categoria = (mov.detalles?.categoria as string) || 'Sin categoría';
-    const concepto = (mov.descripcion || mov.detalles?.concepto || '').toLowerCase();
+    const detalles = parseDetalles(mov.detalles);
+    const categoria = (detalles.categoria as string) || 'Sin categoría';
+    const concepto = (mov.descripcion || (detalles.concepto as string) || '').toLowerCase();
 
     if (categoria === 'Pago de haberes') return 'Sueldos';
     if (
@@ -91,21 +106,51 @@ export class ReportesService {
         const ventaCerradaRepo = AppDataSource.getRepository(VentaCerrada);
         const repartidorRepo = AppDataSource.getRepository(Repartidor);
 
-        const [movimientos, ventas, ventasCerradas, repartidores] = await Promise.all([
-            movimientoRepo.find({
-                where: { fecha: Between(inicio, fin), activo: true },
-                order: { fecha: 'ASC' },
-            }),
-            ventaRepo.find({
-                where: { fecha_venta: Between(inicio, fin) },
-                order: { fecha_venta: 'DESC' },
-            }),
-            ventaCerradaRepo.find({
-                where: { fecha_cierre: Between(inicio, fin) },
-                relations: ['repartidor'],
-            }),
-            repartidorRepo.find(),
-        ]);
+        const movimientos = await movimientoRepo
+            .createQueryBuilder('mov')
+            .select([
+                'mov.id',
+                'mov.tipo',
+                'mov.monto',
+                'mov.descripcion',
+                'mov.detalles',
+                'mov.fecha',
+            ])
+            .where('mov.fecha BETWEEN :inicio AND :fin', { inicio, fin })
+            .andWhere('mov.activo = :activo', { activo: true })
+            .orderBy('mov.fecha', 'ASC')
+            .getMany();
+
+        const ventas = await ventaRepo
+            .createQueryBuilder('venta')
+            .select([
+                'venta.venta_id',
+                'venta.tipo',
+                'venta.monto_total',
+                'venta.revendedor_nombre',
+                'venta.fecha_venta',
+            ])
+            .where('venta.fecha_venta BETWEEN :inicio AND :fin', { inicio, fin })
+            .getMany();
+
+        const ventasCerradas = await ventaCerradaRepo
+            .createQueryBuilder('vc')
+            .leftJoin('vc.repartidor', 'repartidor')
+            .select([
+                'vc.id',
+                'vc.repartidor_id',
+                'vc.total_venta',
+                'vc.ganancia_repartidor',
+                'vc.ganancia_fabrica',
+                'repartidor.id',
+                'repartidor.nombre',
+            ])
+            .where('vc.fecha_cierre BETWEEN :inicio AND :fin', { inicio, fin })
+            .getMany();
+
+        const repartidores = await repartidorRepo.find({
+            select: ['id', 'nombre'],
+        });
 
         let totalIngresos = 0;
         let totalEgresos = 0;
@@ -140,13 +185,14 @@ export class ReportesService {
                     cantidad: prev.cantidad + 1,
                 });
 
+                const detalles = parseDetalles(mov.detalles);
                 gastosDetalle.push({
                     id: mov.id,
                     fecha: new Date(mov.fecha).toISOString(),
-                    concepto: mov.descripcion || (mov.detalles?.concepto as string) || 'Gasto',
+                    concepto: mov.descripcion || (detalles.concepto as string) || 'Gasto',
                     categoria,
                     monto,
-                    proveedor: (mov.detalles?.proveedor as string) || '',
+                    proveedor: (detalles.proveedor as string) || '',
                 });
             } else if (TIPOS_INGRESO.includes(mov.tipo) && monto > 0) {
                 totalIngresos += monto;
