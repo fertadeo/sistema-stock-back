@@ -5,7 +5,7 @@ import { USER_ROLES } from '../constants/roles';
 
 const router = Router();
 
-router.use(authenticateToken, requireRole(USER_ROLES.SUPERADMIN));
+router.use(authenticateToken, requireRole(USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN));
 
 router.get('/', getUsers);
 router.post('/', createUser);

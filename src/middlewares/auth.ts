@@ -22,6 +22,11 @@ const extractToken = (req: Request): string | null => {
     return headerToken;
   }
 
+  const queryToken = req.query?.token;
+  if (typeof queryToken === 'string' && queryToken.trim()) {
+    return queryToken.trim();
+  }
+
   const cookies = cookie.parse(req.headers.cookie || '');
   return cookies.token || null;
 };
