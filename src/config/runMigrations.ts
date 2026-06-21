@@ -1,5 +1,10 @@
 import { DataSource } from 'typeorm';
 
+async function obtenerNombreBase(dataSource: DataSource): Promise<string> {
+  const resultado = await dataSource.query('SELECT DATABASE() AS nombre');
+  return String(resultado[0]?.nombre || 'desconocida');
+}
+
 async function columnaExiste(
   dataSource: DataSource,
   tabla: string,
@@ -14,7 +19,8 @@ async function columnaExiste(
     [tabla, columna]
   );
 
-  return Number(resultado[0]?.total || 0) > 0;
+  const total = resultado[0]?.total;
+  return Number(total ?? 0) > 0;
 }
 
 async function indiceExiste(
@@ -31,7 +37,8 @@ async function indiceExiste(
     [tabla, indice]
   );
 
-  return Number(resultado[0]?.total || 0) > 0;
+  const total = resultado[0]?.total;
+  return Number(total ?? 0) > 0;
 }
 
 async function constraintExiste(
@@ -48,15 +55,18 @@ async function constraintExiste(
     [tabla, constraint]
   );
 
-  return Number(resultado[0]?.total || 0) > 0;
+  const total = resultado[0]?.total;
+  return Number(total ?? 0) > 0;
 }
 
-export async function runPendingMigrations(dataSource: DataSource): Promise<void> {
+async function migrarVinculacionClientes(dataSource: DataSource): Promise<void> {
   if (!(await columnaExiste(dataSource, 'clientes', 'cliente_vinculado_id'))) {
     console.log('[migrations] Agregando columna clientes.cliente_vinculado_id...');
     await dataSource.query(
       'ALTER TABLE `clientes` ADD COLUMN `cliente_vinculado_id` INT NULL DEFAULT NULL AFTER `dia_reparto`'
     );
+  } else {
+    console.log('[migrations] clientes.cliente_vinculado_id ya existe.');
   }
 
   if (!(await indiceExiste(dataSource, 'clientes', 'fk_cliente_vinculado'))) {
@@ -73,22 +83,40 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
     );
   }
 
+  if (!(await columnaExiste(dataSource, 'clientes', 'cliente_vinculado_id'))) {
+    throw new Error(
+      'No se pudo crear clientes.cliente_vinculado_id. Ejecuta manualmente migrations/alter_clientes_agregar_vinculacion.sql'
+    );
+  }
+}
+
+async function migrarRolesUsuario(dataSource: DataSource): Promise<void> {
   if (!(await columnaExiste(dataSource, 'user', 'role'))) {
     console.log('[migrations] Agregando columna user.role...');
     await dataSource.query(
-      "ALTER TABLE `user` ADD COLUMN `role` VARCHAR(20) NOT NULL DEFAULT 'admin' AFTER `nivel_usuario`"
+      "ALTER TABLE `user` ADD COLUMN `role` VARCHAR(20) NOT NULL DEFAULT 'admin'"
     );
-    await dataSource.query(
-      "UPDATE `user` SET `role` = 'superadmin' WHERE `id` = 1"
-    );
+    await dataSource.query("UPDATE `user` SET `role` = 'superadmin' WHERE `id` = 1");
+  } else {
+    console.log('[migrations] user.role ya existe.');
   }
 
   if (!(await columnaExiste(dataSource, 'user', 'repartidor_id'))) {
     console.log('[migrations] Agregando columna user.repartidor_id...');
     await dataSource.query(
-      'ALTER TABLE `user` ADD COLUMN `repartidor_id` VARCHAR(36) NULL DEFAULT NULL AFTER `role`'
+      'ALTER TABLE `user` ADD COLUMN `repartidor_id` VARCHAR(36) NULL DEFAULT NULL'
     );
+  } else {
+    console.log('[migrations] user.repartidor_id ya existe.');
   }
+}
 
-  console.log('[migrations] Esquema verificado.');
+export async function runPendingMigrations(dataSource: DataSource): Promise<void> {
+  const base = await obtenerNombreBase(dataSource);
+  console.log(`[migrations] Verificando esquema en base de datos: ${base}`);
+
+  await migrarVinculacionClientes(dataSource);
+  await migrarRolesUsuario(dataSource);
+
+  console.log('[migrations] Esquema verificado correctamente.');
 }
