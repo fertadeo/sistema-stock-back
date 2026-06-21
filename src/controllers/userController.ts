@@ -183,6 +183,10 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       user.password = await bcrypt.hash(password, saltRounds);
     }
 
+    if (role === undefined && repartidor_id === undefined && !password) {
+      return res.status(400).json({ message: 'No hay cambios para aplicar' });
+    }
+
     await userRepository.save(user);
 
     res.json({
