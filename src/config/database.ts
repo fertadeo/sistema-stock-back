@@ -21,30 +21,57 @@ import { OperacionPendiente } from '../entities/OperacionPendiente';
 import { VisitaNoEncontrado } from '../entities/VisitaNoEncontrado';
 import { RepartidorUbicacion } from '../entities/RepartidorUbicacion';
 
-// Determinar si estamos en modo producción o desarrollo
+dotenv.config({ path: '.env' });
+
 const isProduction = process.env.NODE_ENV === 'production';
-
-dotenv.config({
-  path: isProduction ? '.env.production' : '.env.development'
-});
-// Cargar el archivo .env correcto
 const envFile = isProduction ? '.env.production' : '.env.development';
-dotenv.config({ path: envFile });
+dotenv.config({ path: envFile, override: true });
 
-console.log(`🟢 Cargando configuración desde: ${envFile}`);
-console.log(`🔹 DATABASE_URL: ${process.env.DATABASE_URL}`);
+console.log(`Cargando configuración desde: .env + ${envFile} (NODE_ENV=${process.env.NODE_ENV ?? 'no definido'})`);
 
+function resolveDbSetting(
+  genericKey: string,
+  prodKey: string,
+  devKey: string,
+  fallback = ''
+): string {
+  const value =
+    process.env[genericKey] ??
+    (isProduction ? process.env[prodKey] : process.env[devKey]) ??
+    process.env[prodKey] ??
+    process.env[devKey];
 
-// Configurar las variables de conexión dependiendo del entorno
+  return value ?? fallback;
+}
+
+const dbHost = resolveDbSetting('DB_HOST', 'DB_HOST_PROD', 'DB_HOST_DEV', 'localhost');
+const dbUser = resolveDbSetting('DB_USER', 'DB_USER_PROD', 'DB_USER_DEV', 'root');
+const dbPassword = resolveDbSetting('DB_PASSWORD', 'DB_PASSWORD_PROD', 'DB_PASSWORD_DEV');
+const dbName = resolveDbSetting('DB_NAME', 'DB_NAME_PROD', 'DB_NAME_DEV', 'soderia');
 const dbPoolSize = Number(process.env.DB_POOL_SIZE ?? (isProduction ? 10 : 5));
+
+if (!dbPassword) {
+  console.error(
+    `[database] Falta la contraseña de MySQL. Define DB_PASSWORD` +
+      (isProduction ? '_PROD' : '_DEV') +
+      ` o DB_PASSWORD en ${envFile} / variables de PM2.`
+  );
+}
+
+console.log({
+  DB_HOST: dbHost,
+  DB_USER: dbUser,
+  DB_PASSWORD: dbPassword ? '***' : '(vacía)',
+  DB_NAME: dbName,
+});
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
-  host: isProduction ? process.env.DB_HOST_PROD : process.env.DB_HOST_DEV,
+  host: dbHost,
   port: 3306,
-  username: isProduction ? process.env.DB_USER_PROD : process.env.DB_USER_DEV,
-  password: isProduction ? process.env.DB_PASSWORD_PROD : process.env.DB_PASSWORD_DEV,
-  database: isProduction ? process.env.DB_NAME_PROD : process.env.DB_NAME_DEV,
+  username: dbUser,
+  password: dbPassword,
+  database: dbName,
   synchronize: false,
   logging: false,
   entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor, Movimiento, Cobro, MovimientoEnvase, OperacionPendiente, VisitaNoEncontrado, RepartidorUbicacion],
@@ -56,21 +83,17 @@ export const AppDataSource = new DataSource({
   poolSize: Number.isFinite(dbPoolSize) && dbPoolSize > 0 ? dbPoolSize : 5,
 });
 
-
-
-console.log({
-  DB_HOST: isProduction ? process.env.DB_HOST_PROD : process.env.DB_HOST_DEV,
-  DB_USER: isProduction ? process.env.DB_USER_PROD : process.env.DB_USER_DEV,
-  DB_PASSWORD: isProduction ? process.env.DB_PASSWORD_PROD : process.env.DB_PASSWORD_DEV,
-  DB_NAME: isProduction ? process.env.DB_NAME_PROD : process.env.DB_NAME_DEV,
-});
-
 import { runPendingMigrations } from './runMigrations';
 
 export const initializeDatabase = async () => {
   try {
     if (AppDataSource.isInitialized) {
       return;
+    }
+    if (!dbPassword) {
+      throw new Error(
+        `Contraseña de MySQL no configurada. Revisa ${envFile} o las variables de entorno de PM2.`
+      );
     }
     await AppDataSource.initialize();
     console.log(`Conexión a la base de datos establecida (pool: ${dbPoolSize})`);
