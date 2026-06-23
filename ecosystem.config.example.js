@@ -31,10 +31,12 @@ module.exports = {
         GOOGLE_MAPS_API_KEY: 'tu_api_key',
         FRONTEND_URL: 'https://sistema.soderiadonjavier.com',
         CORS_ORIGINS: 'https://sistema.soderiadonjavier.com',
-        // Generar con: npx web-push generate-vapid-keys
+        // Push al celular del repartidor (PWA Android). NO envía correos.
+        // Generar claves: npx web-push generate-vapid-keys
         VAPID_PUBLIC_KEY: 'TU_VAPID_PUBLIC_KEY',
         VAPID_PRIVATE_KEY: 'TU_VAPID_PRIVATE_KEY',
-        VAPID_SUBJECT: 'mailto:soporte@soderiadonjavier.com',
+        // Identificador del emisor (obligatorio por el protocolo Web Push). Puede ser URL o mailto:
+        VAPID_SUBJECT: 'https://sistema.soderiadonjavier.com',
       },
     },
   ],

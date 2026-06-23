@@ -14,7 +14,7 @@ class PushNotificationService {
   constructor() {
     const publicKey = process.env.VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;
-    const subject = process.env.VAPID_SUBJECT || 'mailto:soporte@soderiadonjavier.com';
+    const subject = process.env.VAPID_SUBJECT || 'https://sistema.soderiadonjavier.com';
 
     if (publicKey && privateKey) {
       webpush.setVapidDetails(subject, publicKey, privateKey);
