@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import fs from 'fs';
+import path from 'path';
 import { DataSource } from 'typeorm';
 import { User } from '../entities/User';
 import { Clientes } from '../entities/Clientes';
@@ -20,14 +22,37 @@ import { MovimientoEnvase } from '../entities/MovimientoEnvase';
 import { OperacionPendiente } from '../entities/OperacionPendiente';
 import { VisitaNoEncontrado } from '../entities/VisitaNoEncontrado';
 import { RepartidorUbicacion } from '../entities/RepartidorUbicacion';
+import { RepartidorRutaParada } from '../entities/RepartidorRutaParada';
+import { PushSubscription } from '../entities/PushSubscription';
 
-dotenv.config({ path: '.env' });
+const isPm2 = process.env.pm_id !== undefined || Boolean(process.env.PM2_HOME);
+let configSource = 'variables de entorno';
+
+if (!isPm2) {
+  dotenv.config({ path: '.env' });
+  const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
+  if (fs.existsSync(path.resolve(envFile))) {
+    dotenv.config({ path: envFile, override: true });
+    configSource = `.env + ${envFile}`;
+  } else {
+    configSource = '.env';
+  }
+} else {
+  configSource = 'PM2 (ecosystem.config.js)';
+}
 
 const isProduction = process.env.NODE_ENV === 'production';
-const envFile = isProduction ? '.env.production' : '.env.development';
-dotenv.config({ path: envFile, override: true });
 
-console.log(`Cargando configuración desde: .env + ${envFile} (NODE_ENV=${process.env.NODE_ENV ?? 'no definido'})`);
+console.log(
+  `Cargando configuración desde: ${configSource} (NODE_ENV=${process.env.NODE_ENV ?? 'no definido'})`
+);
+
+if (isPm2 && !isProduction) {
+  console.warn(
+    '[database] PM2 detectado pero NODE_ENV no es "production". ' +
+      'Usa "pm2 start ecosystem.config.js --env production" o mueve las variables al bloque "env".'
+  );
+}
 
 function resolveDbSetting(
   genericKey: string,
@@ -52,9 +77,7 @@ const dbPoolSize = Number(process.env.DB_POOL_SIZE ?? (isProduction ? 10 : 5));
 
 if (!dbPassword) {
   console.error(
-    `[database] Falta la contraseña de MySQL. Define DB_PASSWORD` +
-      (isProduction ? '_PROD' : '_DEV') +
-      ` o DB_PASSWORD en ${envFile} / variables de PM2.`
+    '[database] Falta la contraseña de MySQL. Define DB_PASSWORD en ecosystem.config.js (PM2) o en .env.'
   );
 }
 
@@ -74,7 +97,7 @@ export const AppDataSource = new DataSource({
   database: dbName,
   synchronize: false,
   logging: false,
-  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor, Movimiento, Cobro, MovimientoEnvase, OperacionPendiente, VisitaNoEncontrado, RepartidorUbicacion],
+  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor, Movimiento, Cobro, MovimientoEnvase, OperacionPendiente, VisitaNoEncontrado, RepartidorUbicacion, RepartidorRutaParada, PushSubscription],
   extra: {
     connectionLimit: Number.isFinite(dbPoolSize) && dbPoolSize > 0 ? dbPoolSize : 5,
     waitForConnections: true,
@@ -92,7 +115,7 @@ export const initializeDatabase = async () => {
     }
     if (!dbPassword) {
       throw new Error(
-        `Contraseña de MySQL no configurada. Revisa ${envFile} o las variables de entorno de PM2.`
+        'Contraseña de MySQL no configurada. Revisa ecosystem.config.js (PM2) o el archivo .env.'
       );
     }
     await AppDataSource.initialize();

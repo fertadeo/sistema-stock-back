@@ -23,6 +23,8 @@ import metricasRoutes from './routes/metricasRoutes';
 import reportesRoutes from './routes/reportesRoutes';
 import repartidorRapidoRoutes from './routes/repartidorRapidoRoutes';
 import sincronizacionRoutes from './routes/sincronizacionRoutes';
+import repartidorRutaRoutes from './routes/repartidorRutaRoutes';
+import { repartidorRutaService } from './services/repartidorRutaService';
 
 const app = express();
 const port = 8080;
@@ -62,6 +64,7 @@ app.use('/api/metricas', metricasRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/repartidor-rapido', repartidorRapidoRoutes);
 app.use('/api/sincronizacion', sincronizacionRoutes);
+app.use('/api/repartidor-ruta', repartidorRutaRoutes);
 
 app.get('/', (req, res) => {
   res.send('¡Hola, mundo!');
@@ -72,4 +75,10 @@ initializeDatabase().then(() => {
   app.listen(port, () => {
     console.log(colors.blue(`Servidor escuchando en http://localhost:${port}`));
   });
+
+  setInterval(() => {
+    void repartidorRutaService.procesarAlertasPendientes().catch((error) => {
+      console.error('[ruta-alertas] Error procesando alertas:', error);
+    });
+  }, 60_000);
 }).catch(error => console.log(error));
