@@ -1,5 +1,12 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { CuentaCorrienteService } from '../services/cuentaCorrienteService';
+import { AuthRequest } from '../middlewares/auth';
+import {
+  esErrorAccesoCliente,
+  filtrarClientesPorRepartidor,
+  obtenerFiltroRepartidor,
+  verificarAccesoClientePorId,
+} from '../utils/repartidorClienteAccess';
 
 const cuentaCorrienteService = new CuentaCorrienteService();
 
@@ -29,7 +36,7 @@ const parseQueryNumber = (valor: unknown, valorPorDefecto: number): number => {
   return parseInt(String(valorNormalizado), 10);
 };
 
-const parsePagination = (req: Request) => {
+const parsePagination = (req: AuthRequest) => {
   const page = parseQueryNumber(req.query.page, 1);
   const limit = parseQueryNumber(req.query.limit, 20);
 
@@ -75,6 +82,15 @@ const responderError = (res: Response, error: unknown, mensajePorDefecto: string
     }
 
     if (
+      error.message === 'Sin acceso a este cliente'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    if (
       error.message === 'ID de cliente inválido' ||
       error.message.includes('page') ||
       error.message.includes('limit') ||
@@ -99,9 +115,10 @@ const responderError = (res: Response, error: unknown, mensajePorDefecto: string
   });
 };
 
-export const getCuentaCorrienteResumen = async (req: Request, res: Response) => {
+export const getCuentaCorrienteResumen = async (req: AuthRequest, res: Response) => {
   try {
     const clienteId = parseClienteId(req.params.id);
+    await verificarAccesoClientePorId(req, clienteId);
     const resumen = await cuentaCorrienteService.obtenerResumenPorCliente(clienteId);
 
     res.json({
@@ -113,9 +130,10 @@ export const getCuentaCorrienteResumen = async (req: Request, res: Response) => 
   }
 };
 
-export const createCobroPorCliente = async (req: Request, res: Response) => {
+export const createCobroPorCliente = async (req: AuthRequest, res: Response) => {
   try {
     const clienteId = parseClienteId(req.params.id);
+    await verificarAccesoClientePorId(req, clienteId);
     const {
       monto,
       medio_pago,
@@ -142,9 +160,10 @@ export const createCobroPorCliente = async (req: Request, res: Response) => {
   }
 };
 
-export const getCuentaCorriente = async (req: Request, res: Response) => {
+export const getCuentaCorriente = async (req: AuthRequest, res: Response) => {
   try {
     const clienteId = parseClienteId(req.params.id);
+    await verificarAccesoClientePorId(req, clienteId);
     const { page, limit } = parsePagination(req);
     const desde = parseDateQuery(req.query.desde, false);
     const hasta = parseDateQuery(req.query.hasta, true);
@@ -169,9 +188,10 @@ export const getCuentaCorriente = async (req: Request, res: Response) => {
   }
 };
 
-export const getCobrosPorCliente = async (req: Request, res: Response) => {
+export const getCobrosPorCliente = async (req: AuthRequest, res: Response) => {
   try {
     const clienteId = parseClienteId(req.params.id);
+    await verificarAccesoClientePorId(req, clienteId);
     const { page, limit } = parsePagination(req);
     const desde = parseDateQuery(req.query.desde, false);
     const hasta = parseDateQuery(req.query.hasta, true);
@@ -193,10 +213,11 @@ export const getCobrosPorCliente = async (req: Request, res: Response) => {
   }
 };
 
-export const getClientesDeudores = async (req: Request, res: Response) => {
+export const getClientesDeudores = async (req: AuthRequest, res: Response) => {
   try {
     const { page, limit } = parsePagination(req);
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+    const filtroRepartidor = await obtenerFiltroRepartidor(req.user);
 
     const resultado = await cuentaCorrienteService.obtenerClientesDeudores({
       page,
@@ -204,10 +225,15 @@ export const getClientesDeudores = async (req: Request, res: Response) => {
       search
     });
 
+    const deudores = filtrarClientesPorRepartidor(resultado.deudores, filtroRepartidor);
+
     res.json({
       success: true,
-      data: resultado.deudores,
-      meta: resultado.paginacion
+      data: deudores,
+      meta: {
+        ...resultado.paginacion,
+        total: deudores.length,
+      }
     });
   } catch (error) {
     responderError(res, error, 'Error al obtener los clientes deudores');

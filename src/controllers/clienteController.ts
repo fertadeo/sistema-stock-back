@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { clientesService } from '../services/clienteService';
 import { Clientes } from '../entities/Clientes';
 import { AppDataSource } from '../config/database';
@@ -8,6 +8,12 @@ import { Productos } from '../entities/Productos';
 import { MovimientoService } from '../services/movimientoService';
 import { clienteVinculacionService } from '../services/clienteVinculacionService';
 import { geocodeAddress } from '../services/googleMapsService';
+import { AuthRequest } from '../middlewares/auth';
+import {
+  esErrorAccesoCliente,
+  obtenerFiltroRepartidor,
+  verificarAccesoClientePorId,
+} from '../utils/repartidorClienteAccess';
 
 interface EnvasePrestado {
   producto_id: number;
@@ -25,15 +31,16 @@ const obtenerClienteNormalizado = async (id: number) => {
   return clientesService.getClienteById(id);
 };
 
-export const getClientes = async (req: Request, res: Response) => {
+export const getClientes = async (req: AuthRequest, res: Response) => {
   try {
     const search = typeof req.query.search === 'string' ? req.query.search : '';
+    const filtroRepartidor = await obtenerFiltroRepartidor(req.user);
 
     let clientes;
     if (search.trim().length >= 2) {
-      clientes = await clientesService.searchClientes(search);
+      clientes = await clientesService.searchClientes(search, filtroRepartidor);
     } else {
-      clientes = await clientesService.getAllClientes();
+      clientes = await clientesService.getAllClientes(filtroRepartidor);
     }
 
     res.json(clientes);
@@ -43,7 +50,7 @@ export const getClientes = async (req: Request, res: Response) => {
   }
 };
 
-export const getClienteById = async (req: Request, res: Response) => {
+export const getClienteById = async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id);
 
@@ -53,6 +60,8 @@ export const getClienteById = async (req: Request, res: Response) => {
         message: 'ID de cliente inválido'
       });
     }
+
+    await verificarAccesoClientePorId(req, id);
 
     const cliente = await clientesService.getClienteById(id);
 
@@ -66,6 +75,13 @@ export const getClienteById = async (req: Request, res: Response) => {
 
     res.json(cliente);
   } catch (error) {
+    if (esErrorAccesoCliente(error)) {
+      return res.status(403).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
     console.error('Error al obtener cliente:', error);
     res.status(500).json({
       success: false,
@@ -75,7 +91,7 @@ export const getClienteById = async (req: Request, res: Response) => {
   }
 };
 
-export const getClientesPorMes = async (req: Request, res: Response) => {
+export const getClientesPorMes = async (req: AuthRequest, res: Response) => {
   try {
       const query = `
           SELECT 
@@ -95,7 +111,7 @@ export const getClientesPorMes = async (req: Request, res: Response) => {
   }
 };
 
-export const getNextClienteId = async (req: Request, res: Response) => {
+export const getNextClienteId = async (req: AuthRequest, res: Response) => {
   try {
     // Encuentra el último cliente ordenado por ID descendente, limitando a 1 resultado
     const [ultimoCliente] = await clienteRepository.find({
@@ -113,7 +129,7 @@ export const getNextClienteId = async (req: Request, res: Response) => {
   }
 };
 
-export const getZonas = async (req: Request, res: Response) => {
+export const getZonas = async (req: AuthRequest, res: Response) => {
   try {
     const zonas = await zonaRepository.find();
     res.json(zonas);
@@ -145,7 +161,7 @@ async function resolverCoordenadas(
   return { latitud: lat, longitud: lon };
 }
 
-export const geocodificarPendientes = async (req: Request, res: Response) => {
+export const geocodificarPendientes = async (req: AuthRequest, res: Response) => {
   try {
     const limite = Math.min(parseInt(String(req.body?.limite || 50), 10) || 50, 100);
 
@@ -215,7 +231,7 @@ export const geocodificarPendientes = async (req: Request, res: Response) => {
   }
 };
 
-export const createCliente = async (req: Request, res: Response) => {
+export const createCliente = async (req: AuthRequest, res: Response) => {
     try {
         const { envases_prestados, zona, latitud, longitud, ...datosCliente } = req.body;
 
@@ -410,11 +426,13 @@ export const createCliente = async (req: Request, res: Response) => {
     }
 };
 
-export const updateCliente = async (req: Request, res: Response) => {
+export const updateCliente = async (req: AuthRequest, res: Response) => {
   const id = parseInt(req.params.id);
   const { envases_prestados, zona, latitud, longitud, ...datosCliente } = req.body;
 
   try {
+    await verificarAccesoClientePorId(req, id);
+
     // Verificar que el cliente existe
     const clienteExistente = await clienteRepository.findOne({
       where: { id },
@@ -564,6 +582,10 @@ export const updateCliente = async (req: Request, res: Response) => {
 
     res.json(clienteNormalizado);
   } catch (error) {
+    if (esErrorAccesoCliente(error)) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+
     console.error('Error al actualizar cliente:', error);
     res.status(500).json({ 
       message: 'Error al actualizar el cliente',
@@ -572,10 +594,12 @@ export const updateCliente = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteCliente = async (req: Request, res: Response) => {
+export const deleteCliente = async (req: AuthRequest, res: Response) => {
   const id = parseInt(req.params.id);
 
   try {
+    await verificarAccesoClientePorId(req, id);
+
     // Primero eliminamos los envases prestados asociados al cliente
     const envaseRepository = AppDataSource.getRepository(EnvasesPrestados);
     await envaseRepository.delete({ cliente_id: id });
@@ -584,24 +608,25 @@ export const deleteCliente = async (req: Request, res: Response) => {
     await clientesService.deleteCliente(id);
     res.status(204).send();
   } catch (error) {
+    if (esErrorAccesoCliente(error)) {
+      return res.status(403).json({ success: false, message: error.message });
+    }
+
     console.error('Error al eliminar el cliente:', error);
     res.status(500).json({ message: 'Error al eliminar el cliente' });
   }
 };
 
-export const prestarEnvases = async (req: Request, res: Response) => {
+export const prestarEnvases = async (req: AuthRequest, res: Response) => {
     try {
         const { cliente_id, producto_id, producto_nombre, capacidad, cantidad } = req.body;
 
-        // Verificar que el cliente existe
-        const cliente = await clienteRepository.findOne({
-            where: { id: cliente_id }
-        });
-
-        if (!cliente) {
+        if (!cliente_id) {
             return res.status(404).json({ message: 'Cliente no encontrado' });
         }
-        
+
+        await verificarAccesoClientePorId(req, Number(cliente_id));
+
         // Verificar que el producto existe y el nombre coincide
         const producto = await productoRepository.findOne({
             where: { id: producto_id }
@@ -630,14 +655,19 @@ export const prestarEnvases = async (req: Request, res: Response) => {
 
         res.status(201).json(resultado);
     } catch (error) {
+        if (esErrorAccesoCliente(error)) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
+
         console.error(error);
         res.status(500).json({ message: 'Error al registrar los envases prestados' });
     }
 };
 
-export const getEnvasesPrestadosPorCliente = async (req: Request, res: Response) => {
+export const getEnvasesPrestadosPorCliente = async (req: AuthRequest, res: Response) => {
     try {
         const cliente_id = parseInt(req.params.id);
+        await verificarAccesoClientePorId(req, cliente_id);
         
         const envases = await AppDataSource
             .getRepository(EnvasesPrestados)
@@ -648,15 +678,21 @@ export const getEnvasesPrestadosPorCliente = async (req: Request, res: Response)
 
         res.json(envases);
     } catch (error) {
+        if (esErrorAccesoCliente(error)) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
+
         console.error(error);
         res.status(500).json({ message: 'Error al obtener los envases prestados' });
     }
 };
 
-export const toggleEstadoCliente = async (req: Request, res: Response) => {
+export const toggleEstadoCliente = async (req: AuthRequest, res: Response) => {
     try {
         const id = parseInt(req.params.id);
         const { estado } = req.body;
+
+        await verificarAccesoClientePorId(req, id);
 
         const cliente = await clienteRepository.findOne({
             where: { id }
@@ -690,6 +726,10 @@ export const toggleEstadoCliente = async (req: Request, res: Response) => {
             cliente: clienteNormalizado
         });
     } catch (error) {
+        if (esErrorAccesoCliente(error)) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
+
         console.error('Error al cambiar estado del cliente:', error);
         res.status(500).json({
             success: false,
@@ -699,7 +739,7 @@ export const toggleEstadoCliente = async (req: Request, res: Response) => {
     }
 };
 
-export const vincularCliente = async (req: Request, res: Response) => {
+export const vincularCliente = async (req: AuthRequest, res: Response) => {
     try {
         const id = parseInt(req.params.id);
         const { cliente_vinculado_id } = req.body;
@@ -707,6 +747,8 @@ export const vincularCliente = async (req: Request, res: Response) => {
         if (isNaN(id)) {
             return res.status(400).json({ success: false, message: 'ID de cliente inválido' });
         }
+
+        await verificarAccesoClientePorId(req, id);
 
         const otroId = Number(cliente_vinculado_id);
         if (!otroId || isNaN(otroId)) {
@@ -724,6 +766,10 @@ export const vincularCliente = async (req: Request, res: Response) => {
             }
         });
     } catch (error) {
+        if (esErrorAccesoCliente(error)) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
+
         console.error('Error al vincular clientes:', error);
         res.status(400).json({
             success: false,
@@ -732,13 +778,15 @@ export const vincularCliente = async (req: Request, res: Response) => {
     }
 };
 
-export const desvincularCliente = async (req: Request, res: Response) => {
+export const desvincularCliente = async (req: AuthRequest, res: Response) => {
     try {
         const id = parseInt(req.params.id);
 
         if (isNaN(id)) {
             return res.status(400).json({ success: false, message: 'ID de cliente inválido' });
         }
+
+        await verificarAccesoClientePorId(req, id);
 
         await clienteVinculacionService.desvincular(id);
         const clienteNormalizado = await obtenerClienteNormalizado(id);
@@ -749,6 +797,10 @@ export const desvincularCliente = async (req: Request, res: Response) => {
             data: { cliente: clienteNormalizado }
         });
     } catch (error) {
+        if (esErrorAccesoCliente(error)) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
+
         console.error('Error al desvincular clientes:', error);
         res.status(400).json({
             success: false,
@@ -757,13 +809,15 @@ export const desvincularCliente = async (req: Request, res: Response) => {
     }
 };
 
-export const getResumenDomicilio = async (req: Request, res: Response) => {
+export const getResumenDomicilio = async (req: AuthRequest, res: Response) => {
     try {
         const id = parseInt(req.params.id);
 
         if (isNaN(id)) {
             return res.status(400).json({ success: false, message: 'ID de cliente inválido' });
         }
+
+        await verificarAccesoClientePorId(req, id);
 
         const resumen = await clienteVinculacionService.obtenerResumenDomicilio(id);
 
@@ -776,6 +830,10 @@ export const getResumenDomicilio = async (req: Request, res: Response) => {
 
         res.json({ success: true, data: resumen });
     } catch (error) {
+        if (esErrorAccesoCliente(error)) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
+
         console.error('Error al obtener resumen de domicilio:', error);
         res.status(500).json({
             success: false,

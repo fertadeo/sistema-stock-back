@@ -2,6 +2,7 @@ import { AppDataSource } from '../config/database';
 import { Clientes } from '../entities/Clientes';
 import { Venta } from '../entities/Venta';
 import { clienteVinculacionService } from './clienteVinculacionService';
+import { filtrarClientesPorRepartidor } from '../utils/repartidorClienteAccess';
 
 const clienteRepository = AppDataSource.getRepository(Clientes);
 const ventaRepository = AppDataSource.getRepository(Venta);
@@ -116,15 +117,21 @@ export const clientesService = {
    * Busca clientes por término con puntuación de relevancia.
    * Ordena resultados por puntuación (más relevantes primero).
    */
-  searchClientes: async (search: string): Promise<any[]> => {
+  searchClientes: async (
+    search: string,
+    repartidorNombre?: string | null
+  ): Promise<any[]> => {
     const termino = (search || '').trim();
     if (termino.length < 2) {
       return [];
     }
 
-    const clientes = await clienteRepository.find({
-      relations: ['envases_prestados', 'zona'],
-    });
+    const clientes = filtrarClientesPorRepartidor(
+      await clienteRepository.find({
+        relations: ['envases_prestados', 'zona'],
+      }),
+      repartidorNombre
+    );
 
     const conPuntuacion = clientes
       .map((cliente) => {
@@ -165,10 +172,13 @@ export const clientesService = {
     return transformado;
   },
 
-  getAllClientes: async (): Promise<any[]> => {
-    const clientes = await clienteRepository.find({
-      relations: ['envases_prestados', 'zona'],
-    });
+  getAllClientes: async (repartidorNombre?: string | null): Promise<any[]> => {
+    const clientes = filtrarClientesPorRepartidor(
+      await clienteRepository.find({
+        relations: ['envases_prestados', 'zona'],
+      }),
+      repartidorNombre
+    );
     return Promise.all(
       clientes.map((cliente) => transformarCliente(cliente, { incluirVinculacion: false }))
     );

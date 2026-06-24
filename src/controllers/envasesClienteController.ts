@@ -1,6 +1,8 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { TipoMovimientoEnvase } from '../entities/MovimientoEnvase';
 import { EnvasesClienteService } from '../services/envasesClienteService';
+import { AuthRequest } from '../middlewares/auth';
+import { verificarAccesoClientePorId } from '../utils/repartidorClienteAccess';
 
 const envasesClienteService = new EnvasesClienteService();
 
@@ -13,7 +15,7 @@ const parseClienteId = (value: string): number => {
   return clienteId;
 };
 
-const parsePagination = (req: Request) => {
+const parsePagination = (req: AuthRequest) => {
   const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
 
@@ -54,6 +56,13 @@ const responderError = (res: Response, error: unknown, mensajePorDefecto: string
       });
     }
 
+    if (error.message === 'Sin acceso a este cliente') {
+      return res.status(403).json({
+        success: false,
+        message: error.message
+      });
+    }
+
     if (
       error.message === 'ID de cliente inválido' ||
       error.message === 'Tipo de movimiento inválido' ||
@@ -80,9 +89,10 @@ const responderError = (res: Response, error: unknown, mensajePorDefecto: string
   });
 };
 
-export const getEnvasesResumenPorCliente = async (req: Request, res: Response) => {
+export const getEnvasesResumenPorCliente = async (req: AuthRequest, res: Response) => {
   try {
     const clienteId = parseClienteId(req.params.id);
+    await verificarAccesoClientePorId(req, clienteId);
     const resumen = await envasesClienteService.obtenerResumenPorCliente(clienteId);
 
     res.json({
@@ -94,9 +104,10 @@ export const getEnvasesResumenPorCliente = async (req: Request, res: Response) =
   }
 };
 
-export const getMovimientosEnvasesPorCliente = async (req: Request, res: Response) => {
+export const getMovimientosEnvasesPorCliente = async (req: AuthRequest, res: Response) => {
   try {
     const clienteId = parseClienteId(req.params.id);
+    await verificarAccesoClientePorId(req, clienteId);
     const { page, limit } = parsePagination(req);
     const tipo = parseTipoMovimiento(req.query.tipo);
 
@@ -116,9 +127,10 @@ export const getMovimientosEnvasesPorCliente = async (req: Request, res: Respons
   }
 };
 
-export const createMovimientoEnvasesPorCliente = async (req: Request, res: Response) => {
+export const createMovimientoEnvasesPorCliente = async (req: AuthRequest, res: Response) => {
   try {
     const clienteId = parseClienteId(req.params.id);
+    await verificarAccesoClientePorId(req, clienteId);
     const tipo = parseTipoMovimiento(req.body.tipo);
 
     if (!tipo) {
