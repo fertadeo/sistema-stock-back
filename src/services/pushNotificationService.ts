@@ -60,6 +60,9 @@ class PushNotificationService {
     };
 
     log('[vapid] Verificando claves Web Push (alertas módulo Ruta)...');
+    log(
+      `[vapid] Entorno: NODE_ENV=${process.env.NODE_ENV ?? '(no definido)'} | PM2=${process.env.pm_id !== undefined ? 'sí' : 'no'}`
+    );
 
     if (!publicKey && !privateKey) {
       const estado: VapidEstado = {
@@ -70,6 +73,10 @@ class PushNotificationService {
         mensaje: 'Faltan VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY',
       };
       warn('[vapid] NO CONFIGURADO — faltan VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY');
+      warn(
+        '[vapid] Si usás PM2 con env_production, reiniciá con: pm2 restart ecosystem.config.js --env production --update-env'
+      );
+      warn('[vapid] O mové las variables al bloque "env" en ecosystem.config.js');
       warn('[vapid] Las alertas con la app cerrada en Android no funcionarán hasta configurarlas.');
       warn('[vapid] Generar claves: npx web-push generate-vapid-keys');
       this.configurado = false;

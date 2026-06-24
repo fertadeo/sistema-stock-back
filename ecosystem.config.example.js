@@ -1,11 +1,13 @@
 /**
  * Copiar a ecosystem.config.js y completar credenciales.
  *
- * Arranque en producción (aplica el bloque env_production):
+ * IMPORTANTE — PM2 y env_production:
+ * Las variables en "env_production" SOLO se cargan si arrancás con:
  *   pm2 start ecosystem.config.js --env production
+ *   pm2 restart ecosystem.config.js --env production --update-env
  *
- * Alternativa: poner las variables directamente en "env" si el servidor
- * solo corre en producción (no hace falta --env production).
+ * Si el VPS solo corre en producción, es más simple poner todo en "env"
+ * (ver bloque comentado abajo) y evitar depender de --env production.
  */
 module.exports = {
   apps: [
@@ -35,9 +37,22 @@ module.exports = {
         // Generar claves: npx web-push generate-vapid-keys
         VAPID_PUBLIC_KEY: 'TU_VAPID_PUBLIC_KEY',
         VAPID_PRIVATE_KEY: 'TU_VAPID_PRIVATE_KEY',
-        // Identificador del emisor (obligatorio por el protocolo Web Push). Puede ser URL o mailto:
         VAPID_SUBJECT: 'https://sistema.soderiadonjavier.com',
       },
     },
   ],
 };
+
+// Alternativa recomendada para VPS solo producción — reemplazar el module.exports de arriba:
+// module.exports = {
+//   apps: [{
+//     name: 'sistema-stock-backend',
+//     script: './dist/index.js',
+//     cwd: __dirname,
+//     env: {
+//       NODE_ENV: 'production',
+//       DB_HOST: 'localhost',
+//       // ... todas las variables aquí, incluidas VAPID_*
+//     },
+//   }],
+// };
