@@ -35,7 +35,10 @@ class PushNotificationService {
 
     const repo = AppDataSource.getRepository(PushSubscription);
     const subs = await repo.find({ where: { user_id: userId } });
-    if (subs.length === 0) return 0;
+    if (subs.length === 0) {
+      console.warn(`[push] Usuario ${userId} sin suscripciones push activas`);
+      return 0;
+    }
 
     const body = JSON.stringify(payload);
     let enviados = 0;
@@ -50,8 +53,10 @@ class PushNotificationService {
           body
         );
         enviados += 1;
+        console.log(`[push] Notificación enviada a usuario ${userId}`);
       } catch (error: unknown) {
         const status = (error as { statusCode?: number })?.statusCode;
+        console.error(`[push] Error enviando a usuario ${userId}:`, status, error);
         if (status === 404 || status === 410) {
           await repo.delete({ id: sub.id });
         }
@@ -59,6 +64,21 @@ class PushNotificationService {
     }
 
     return enviados;
+  }
+
+  async usuarioTieneSuscripcion(userId: number): Promise<boolean> {
+    const repo = AppDataSource.getRepository(PushSubscription);
+    const count = await repo.count({ where: { user_id: userId } });
+    return count > 0;
+  }
+
+  async enviarPrueba(userId: number): Promise<number> {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://sistema.soderiadonjavier.com';
+    return this.enviarAPushUsuario(userId, {
+      title: 'Prueba de alertas Sodería',
+      body: 'Si ves esto, las notificaciones push están funcionando.',
+      url: `${frontendUrl}/repartidor/ruta`,
+    });
   }
 }
 

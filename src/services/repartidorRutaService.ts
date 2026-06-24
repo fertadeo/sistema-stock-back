@@ -189,6 +189,7 @@ export class RepartidorRutaService {
     const hoy = fechaHoy();
     const ahora = new Date();
     const horaActual = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}:00`;
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://sistema.soderiadonjavier.com').replace(/\/+$/, '');
 
     const paradas = await this.paradaRepo
       .createQueryBuilder('p')
@@ -205,7 +206,7 @@ export class RepartidorRutaService {
       const nombre = parada.cliente?.nombre || 'Cliente';
       const direccion = parada.cliente?.direccion || '';
       const comentario = parada.comentario ? ` — ${parada.comentario}` : '';
-      const url = `/repartidor/rapido?cliente=${parada.cliente_id}`;
+      const url = `${frontendUrl}/repartidor/rapido?cliente=${parada.cliente_id}`;
 
       const enviado = await pushNotificationService.enviarAPushUsuario(parada.user_id, {
         title: `Visita programada: ${nombre}`,
@@ -217,10 +218,32 @@ export class RepartidorRutaService {
         parada.alerta_enviada = true;
         await this.paradaRepo.save(parada);
         procesadas += 1;
+      } else {
+        console.warn(
+          `[ruta-alertas] No se pudo enviar push parada ${parada.id} usuario ${parada.user_id}`
+        );
       }
     }
 
     return { procesadas };
+  }
+
+  async obtenerEstadoPush(userId: number) {
+    return {
+      vapid_configurado: pushNotificationService.estaConfigurado(),
+      suscripcion_activa: await pushNotificationService.usuarioTieneSuscripcion(userId),
+    };
+  }
+
+  async enviarPushPrueba(userId: number) {
+    if (!pushNotificationService.estaConfigurado()) {
+      throw new Error('VAPID no configurado en el servidor');
+    }
+    const enviados = await pushNotificationService.enviarPrueba(userId);
+    if (enviados === 0) {
+      throw new Error('No hay suscripción push en este dispositivo. Activá alertas en Ruta.');
+    }
+    return { enviados };
   }
 }
 

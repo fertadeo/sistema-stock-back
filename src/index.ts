@@ -80,5 +80,5 @@ initializeDatabase().then(() => {
     void repartidorRutaService.procesarAlertasPendientes().catch((error) => {
       console.error('[ruta-alertas] Error procesando alertas:', error);
     });
-  }, 60_000);
+  }, 30_000);
 }).catch(error => console.log(error));

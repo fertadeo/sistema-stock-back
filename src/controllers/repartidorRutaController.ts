@@ -112,4 +112,25 @@ export class RepartidorRutaController {
       return res.status(500).json({ success: false, message: 'Error al desuscribir push' });
     }
   };
+
+  obtenerEstadoPush = async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const estado = await repartidorRutaService.obtenerEstadoPush(userId);
+      return res.json({ success: true, data: estado });
+    } catch {
+      return res.status(500).json({ success: false, message: 'Error al obtener estado push' });
+    }
+  };
+
+  enviarPushPrueba = async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const resultado = await repartidorRutaService.enviarPushPrueba(userId);
+      return res.json({ success: true, data: resultado });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al enviar prueba';
+      return res.status(400).json({ success: false, message });
+    }
+  };
 }
