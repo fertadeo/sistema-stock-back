@@ -165,7 +165,9 @@ export class RepartidorRutaService {
       existente.user_id = userId;
       existente.p256dh = data.keys.p256dh;
       existente.auth = data.keys.auth;
-      return this.pushRepo.save(existente);
+      const guardada = await this.pushRepo.save(existente);
+      console.log(`[push] Suscripción actualizada usuario ${userId}`);
+      return guardada;
     }
 
     const sub = this.pushRepo.create({
@@ -174,7 +176,9 @@ export class RepartidorRutaService {
       p256dh: data.keys.p256dh,
       auth: data.keys.auth,
     });
-    return this.pushRepo.save(sub);
+    const guardada = await this.pushRepo.save(sub);
+    console.log(`[push] Suscripción nueva guardada usuario ${userId}`);
+    return guardada;
   }
 
   async eliminarPushSubscription(userId: number, endpoint: string) {
