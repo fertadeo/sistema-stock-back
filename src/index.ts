@@ -25,6 +25,7 @@ import repartidorRapidoRoutes from './routes/repartidorRapidoRoutes';
 import sincronizacionRoutes from './routes/sincronizacionRoutes';
 import repartidorRutaRoutes from './routes/repartidorRutaRoutes';
 import { repartidorRutaService } from './services/repartidorRutaService';
+import { pushNotificationService } from './services/pushNotificationService';
 
 const app = express();
 const port = 8080;
@@ -72,6 +73,8 @@ app.get('/', (req, res) => {
 
 // Inicialización de la base de datos y arranque del servidor
 initializeDatabase().then(() => {
+  pushNotificationService.logEstadoInicio();
+
   app.listen(port, () => {
     console.log(colors.blue(`Servidor escuchando en http://localhost:${port}`));
   });
