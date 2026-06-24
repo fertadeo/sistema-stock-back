@@ -26,6 +26,18 @@ function fechaHoy(): string {
   return `${y}-${m}-${day}`;
 }
 
+const ultimoAvisoSinPush = new Map<string, number>();
+const AVISO_SIN_PUSH_MS = 5 * 60 * 1000;
+
+function avisarSinPushUnaVez(paradaId: number, userId: number) {
+  const clave = `${paradaId}:${userId}`;
+  const ahora = Date.now();
+  const ultimo = ultimoAvisoSinPush.get(clave) ?? 0;
+  if (ahora - ultimo < AVISO_SIN_PUSH_MS) return;
+  ultimoAvisoSinPush.set(clave, ahora);
+  console.warn(`[ruta-alertas] No se pudo enviar push parada ${paradaId} usuario ${userId} (sin suscripción activa)`);
+}
+
 function normalizarHora(hora: string | null | undefined): string | null {
   if (!hora || !hora.trim()) return null;
   const partes = hora.trim().split(':');
@@ -223,9 +235,7 @@ export class RepartidorRutaService {
         await this.paradaRepo.save(parada);
         procesadas += 1;
       } else {
-        console.warn(
-          `[ruta-alertas] No se pudo enviar push parada ${parada.id} usuario ${parada.user_id}`
-        );
+        avisarSinPushUnaVez(parada.id, parada.user_id);
       }
     }
 

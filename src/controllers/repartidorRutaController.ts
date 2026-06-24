@@ -79,7 +79,8 @@ export class RepartidorRutaController {
 
   obtenerVapidPublicKey = async (_req: AuthRequest, res: Response) => {
     const publicKey = pushNotificationService.getPublicKey();
-    return res.json({ success: true, data: { publicKey, habilitado: Boolean(publicKey) } });
+    const habilitado = pushNotificationService.estaConfigurado();
+    return res.json({ success: true, data: { publicKey: habilitado ? publicKey : null, habilitado } });
   };
 
   suscribirPush = async (req: AuthRequest, res: Response) => {
@@ -88,13 +89,16 @@ export class RepartidorRutaController {
       const { endpoint, keys } = req.body;
 
       if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        console.warn(`[push] Suscripción rechazada usuario ${userId}: payload incompleto`);
         return res.status(400).json({ success: false, message: 'Suscripción push inválida' });
       }
 
+      console.log(`[push] Recibida suscripción usuario ${userId} endpoint ${String(endpoint).slice(0, 48)}...`);
       await repartidorRutaService.guardarPushSubscription(userId, { endpoint, keys });
       return res.json({ success: true });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Error al suscribir push';
+      console.error(`[push] Error guardando suscripción usuario ${req.user?.id}:`, message);
       return res.status(500).json({ success: false, message });
     }
   };
