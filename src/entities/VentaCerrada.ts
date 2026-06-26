@@ -54,5 +54,5 @@ export class VentaCerrada {
     estado!: string;
 
     @Column({ type: 'varchar', length: 50, nullable: true })
-    grupo_cierre?: string;
-} 
+    grupo_cierre?: string | null;
+}
