@@ -595,6 +595,95 @@ export const actualizarVentaCerrada = async (req: Request, res: Response) => {
   }
 };
 
+export const desagruparVentasCerradas = async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere un array de IDs de ventas a desagrupar'
+      });
+    }
+
+    const ventasCerradas = await ventaCerradaRepository.find({
+      where: { id: In(ids) }
+    });
+
+    if (ventasCerradas.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontraron ventas para desagrupar'
+      });
+    }
+
+    const ventasSinGrupo = ventasCerradas.filter(v => !v.grupo_cierre);
+    if (ventasSinGrupo.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Algunas ventas no pertenecen a un grupo',
+        ventas_sin_grupo: ventasSinGrupo.map(v => v.id)
+      });
+    }
+
+    const ventasNoFinalizadas = ventasCerradas.filter(v => v.estado !== 'Finalizado');
+    if (ventasNoFinalizadas.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Solo se pueden desagrupar ventas finalizadas',
+        ventas_no_finalizadas: ventasNoFinalizadas.map(v => v.id)
+      });
+    }
+
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      for (const venta of ventasCerradas) {
+        await queryRunner.manager.update(VentaCerrada, venta.id, {
+          grupo_cierre: null,
+          estado: 'Rendicion final pendiente'
+        });
+      }
+
+      await queryRunner.commitTransaction();
+
+      const ventasActualizadas = await ventaCerradaRepository.find({
+        where: { id: In(ids) },
+        relations: ['repartidor']
+      });
+
+      res.json({
+        success: true,
+        message: 'Ventas desagrupadas correctamente',
+        ventas_cerradas: ventasActualizadas.map(venta => ({
+          id: venta.id,
+          proceso_id: venta.proceso_id,
+          estado: venta.estado,
+          grupo_cierre: venta.grupo_cierre,
+          repartidor: venta.repartidor ? {
+            id: venta.repartidor.id,
+            nombre: venta.repartidor.nombre
+          } : null
+        }))
+      });
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  } catch (error) {
+    console.error('Error al desagrupar ventas cerradas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al desagrupar las ventas cerradas',
+      error: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+};
+
 export const eliminarVentaCerrada = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

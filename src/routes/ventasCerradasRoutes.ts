@@ -5,26 +5,18 @@ import {
   getVentaCerradaById,
   getVentasCerradasByRepartidor,
   actualizarVentaCerrada,
+  desagruparVentasCerradas,
   eliminarVentaCerrada
 } from '../controllers/ventaCerradaController';
 
 const router = express.Router();
 
-// Crear una nueva venta cerrada
 router.post('/', createVentaCerrada);
-
-// Obtener todas las ventas cerradas
 router.get('/', getVentasCerradas);
-
-// Obtener una venta cerrada por ID
-router.get('/:id', getVentaCerradaById);
-
-// Obtener ventas cerradas por repartidor
 router.get('/repartidor/:repartidorId', getVentasCerradasByRepartidor);
-
-// Actualizar una venta cerrada
-router.put('/:id', actualizarVentaCerrada);
-
+router.put('/finalizar', actualizarVentaCerrada);
+router.put('/desagrupar', desagruparVentasCerradas);
+router.get('/:id', getVentaCerradaById);
 router.delete('/:id', eliminarVentaCerrada);
 
-export default router; 
+export default router;
