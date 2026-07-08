@@ -1,15 +1,20 @@
 import { Router } from 'express';
-import {actualizarProducto, crearProducto, importarProductos, obtenerProductoPorId,obtenerTodosLosProductos, obtenerUltimoIdProducto } from '../controllers/productController'; // Asegúrate de que el controlador esté bien importado
+import {
+  actualizarProducto,
+  crearProducto,
+  importarProductos,
+  obtenerProductoPorId,
+  obtenerTodosLosProductos,
+  obtenerUltimoIdProducto,
+} from '../controllers/productController';
 
 const router = Router();
 
-// Ruta para importar productos desde un archivo CSV o JSON
 router.post('/importar-productos', importarProductos);
-router.get('/:id', obtenerProductoPorId);
+router.post('/crear-producto', crearProducto);
+router.get('/last-id/obtener', obtenerUltimoIdProducto);
 router.get('/', obtenerTodosLosProductos);
-router.get('/last-id/obtener', obtenerUltimoIdProducto)
-// router.get('/', obtenerProductoPorId)
-router.put('/:id', actualizarProducto); // Nueva ruta para actualizar productos
+router.get('/:id', obtenerProductoPorId);
+router.put('/:id', actualizarProducto);
 
-router.post('/crear-producto', crearProducto)
-export default router; 
+export default router;

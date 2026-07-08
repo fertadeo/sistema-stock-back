@@ -102,19 +102,16 @@ export const obtenerProductoPorId = async (req: Request, res: Response) => {
 // Nueva función para obtener el último ID de los productos
 export const obtenerUltimoIdProducto = async (req: Request, res: Response) => {
   try {
-    // Obtener el producto con el ID más alto
     const ultimoProducto = await productoRepository
       .createQueryBuilder('producto')
       .orderBy('producto.id', 'DESC')
       .getOne();
 
     if (!ultimoProducto) {
-      return res.status(404).json({ message: 'No se encontraron productos' });
+      return res.json({ ultimoId: 0 });
     }
 
-    // Retornar el ID más alto
     return res.json({ ultimoId: ultimoProducto.id });
-  
   } catch (error) {
     console.error('Error al obtener el último ID de producto:', error);
     return res.status(500).json({ message: 'Error al obtener el último ID de producto' });
@@ -204,35 +201,58 @@ export const actualizarPreciosPorProveedor = async (req: Request, res: Response)
 // Controlador para crear un nuevo producto
 export const crearProducto = async (req: Request, res: Response) => {
   const {
-    id,
     nombreProducto,
     precioPublico,
     precioRevendedor,
     cantidadStock,
-    descripcion
-
-
+    descripcion,
   } = req.body;
 
+  if (!nombreProducto || String(nombreProducto).trim() === '') {
+    return res.status(400).json({ message: 'El nombre del producto es obligatorio' });
+  }
+
+  const precioPublicoNumero = Number(precioPublico);
+  const precioRevendedorNumero = Number(precioRevendedor);
+  const cantidadStockNumero = Number(cantidadStock ?? 0);
+
+  if (Number.isNaN(precioPublicoNumero) || precioPublicoNumero < 0) {
+    return res.status(400).json({ message: 'El precio público debe ser un número válido' });
+  }
+
+  if (Number.isNaN(precioRevendedorNumero) || precioRevendedorNumero < 0) {
+    return res.status(400).json({ message: 'El precio revendedor debe ser un número válido' });
+  }
+
+  if (Number.isNaN(cantidadStockNumero) || cantidadStockNumero < 0) {
+    return res.status(400).json({ message: 'La cantidad de stock debe ser un número válido' });
+  }
+
   try {
-    // Crear una instancia de producto
-    const nuevoProducto = new Productos();
-    nuevoProducto.id = id;
-    nuevoProducto.nombreProducto = nombreProducto;
-    nuevoProducto.precioPublico = precioPublico;
-    nuevoProducto.precioRevendedor = precioRevendedor;
-    nuevoProducto.cantidadStock = cantidadStock;
-    nuevoProducto.descripcion = descripcion;
+    const nuevoProducto = productoRepository.create({
+      nombreProducto: String(nombreProducto).trim(),
+      precioPublico: precioPublicoNumero,
+      precioRevendedor: precioRevendedorNumero,
+      cantidadStock: cantidadStockNumero,
+      descripcion: descripcion != null ? String(descripcion).trim() : '',
+    });
 
+    const productoGuardado = await productoRepository.save(nuevoProducto);
 
-
-
-    // Guardar el nuevo producto en la base de datos
-    await AppDataSource.getRepository(Productos).save(nuevoProducto);
-
-    return res.status(201).json({ message: 'Producto creado exitosamente', producto: nuevoProducto });
-  } catch (error) {
+    return res.status(201).json({
+      message: 'Producto creado exitosamente',
+      producto: productoGuardado,
+    });
+  } catch (error: any) {
     console.error('Error al crear el producto:', error);
-    return res.status(500).json({ message: 'Error al crear el producto' });
+
+    if (error?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'Ya existe un producto con ese ID' });
+    }
+
+    return res.status(500).json({
+      message: 'Error al crear el producto',
+      error: error?.message || 'Error desconocido',
+    });
   }
 };
