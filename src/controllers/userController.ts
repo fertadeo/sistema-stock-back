@@ -14,7 +14,10 @@ const serializeUser = (user: User) => ({
   role: user.role,
   role_label: roleLabel(user.role),
   repartidor_id: user.repartidor_id,
+  nombre: user.nombre,
+  activo: user.activo,
   created_at: user.created_at,
+  last_login: user.last_login,
 });
 
 const nivelFromRole = (role: UserRole): number => {
@@ -75,7 +78,7 @@ export const getUsers = async (_req: AuthRequest, res: Response) => {
 };
 
 export const createUser = async (req: AuthRequest, res: Response) => {
-  const { email, password, role, repartidor_id } = req.body;
+  const { email, password, role, repartidor_id, nombre } = req.body;
   const actor = req.user!;
 
   try {
@@ -110,6 +113,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       email,
       password: hashedPassword,
       role,
+      nombre,
+      activo: true,
       nivel_usuario: nivelFromRole(role),
       repartidor_id: repartidorIdValidado,
     });
@@ -131,7 +136,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 
 export const updateUser = async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
-  const { role, repartidor_id, password } = req.body;
+  const { role, repartidor_id, password, nombre, activo } = req.body;
   const actor = req.user!;
 
   try {
@@ -160,6 +165,14 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       user.nivel_usuario = nivelFromRole(role);
     }
 
+    if (nombre !== undefined) {
+      user.nombre = nombre;
+    }
+
+    if (activo !== undefined) {
+      user.activo = activo;
+    }
+
     const rolFinal = user.role;
 
     if (repartidor_id !== undefined || role !== undefined) {
@@ -183,7 +196,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       user.password = await bcrypt.hash(password, saltRounds);
     }
 
-    if (role === undefined && repartidor_id === undefined && !password) {
+    if (role === undefined && repartidor_id === undefined && !password && nombre === undefined && activo === undefined) {
       return res.status(400).json({ message: 'No hay cambios para aplicar' });
     }
 

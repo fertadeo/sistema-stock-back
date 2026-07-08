@@ -62,8 +62,8 @@ export const authenticateToken = async (
       where: { id: Number(decoded.id) },
     });
 
-    if (!user) {
-      return res.status(401).json({ message: 'Usuario no encontrado' });
+    if (!user || !user.activo) {
+      return res.status(401).json({ message: 'Usuario no encontrado o inactivo' });
     }
 
     const role = resolveRole(user);

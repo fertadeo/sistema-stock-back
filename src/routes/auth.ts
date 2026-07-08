@@ -63,7 +63,7 @@ router.post('/login', async (req, res) => {
     const userRepository = AppDataSource.getRepository(User);
     const user = await userRepository.findOne({ where: { email } });
 
-    if (!user) {
+    if (!user || !user.activo) {
       return res.status(400).json({ message: 'Email o contraseña incorrectos' });
     }
 
@@ -71,6 +71,9 @@ router.post('/login', async (req, res) => {
     if (!isMatch) {
       return res.status(400).json({ message: 'Email o contraseña incorrectos' });
     }
+
+    user.last_login = new Date();
+    await userRepository.save(user);
 
     const role = user.role || normalizeRole(user.nivel_usuario);
     const token = signUserToken({

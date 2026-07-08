@@ -32,3 +32,41 @@ http://localhost:8080/api/auth/register
     "nivel_usuario": 5
 }
 
+# ===== RUTAS DE FACTURACIÓN AFIP =====
+
+POST
+http://localhost:8080/api/facturacion/factura
+
+{
+  "tipoComprobante": 1,
+  "concepto": 1,
+  "tipoDoc": 80,
+  "nroDoc": 20111111112,
+  "fechaServicioDesde": "20240101",
+  "fechaServicioHasta": "20240101",
+  "fechaVtoPago": "20240115",
+  "importeTotal": 1210.00,
+  "importeNeto": 1000.00,
+  "importeIva": 210.00,
+  "items": [
+    {
+      "descripcion": "Soda 1L",
+      "cantidad": 10,
+      "precioUnitario": 100.00,
+      "importe": 1000.00,
+      "alicuotaIva": 21
+    }
+  ]
+}
+
+GET
+http://localhost:8080/api/facturacion/ultimo-comprobante/1
+http://localhost:8080/api/facturacion/contribuyente/20111111112
+http://localhost:8080/api/facturacion/verificar-comprobante/1/1/1/20111111112
+http://localhost:8080/api/facturacion/tipos-comprobante
+http://localhost:8080/api/facturacion/tipos-documento
+http://localhost:8080/api/facturacion/alicuotas-iva
+
+POST
+http://localhost:8080/api/facturacion/factura-desde-venta/1
+

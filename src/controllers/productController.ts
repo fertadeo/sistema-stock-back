@@ -208,6 +208,8 @@ export const crearProducto = async (req: Request, res: Response) => {
     descripcion,
   } = req.body;
 
+  console.log('[crearProducto] Payload recibido:', req.body);
+
   if (!nombreProducto || String(nombreProducto).trim() === '') {
     return res.status(400).json({ message: 'El nombre del producto es obligatorio' });
   }

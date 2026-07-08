@@ -75,10 +75,12 @@ const dbPassword = resolveDbSetting('DB_PASSWORD', 'DB_PASSWORD_PROD', 'DB_PASSW
 const dbName = resolveDbSetting('DB_NAME', 'DB_NAME_PROD', 'DB_NAME_DEV', 'soderia');
 const dbPoolSize = Number(process.env.DB_POOL_SIZE ?? (isProduction ? 10 : 5));
 
-if (!dbPassword) {
+if (!dbPassword && isProduction) {
   console.error(
     '[database] Falta la contraseña de MySQL. Define DB_PASSWORD en ecosystem.config.js (PM2) o en .env.'
   );
+} else if (!dbPassword) {
+  console.warn('[database] MySQL sin contraseña (solo desarrollo local).');
 }
 
 console.log({
@@ -113,7 +115,7 @@ export const initializeDatabase = async () => {
     if (AppDataSource.isInitialized) {
       return;
     }
-    if (!dbPassword) {
+    if (!dbPassword && isProduction) {
       throw new Error(
         'Contraseña de MySQL no configurada. Revisa ecosystem.config.js (PM2) o el archivo .env.'
       );

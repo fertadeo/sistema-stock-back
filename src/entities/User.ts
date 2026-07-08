@@ -12,6 +12,12 @@ export class User {
   @Column()
   password!: string;
 
+  @Column({ nullable: true })
+  nombre?: string;
+
+  @Column({ default: true })
+  activo!: boolean;
+
   @CreateDateColumn()
   created_at!: Date;
 
@@ -23,4 +29,7 @@ export class User {
 
   @Column({ type: 'varchar', length: 36, nullable: true })
   repartidor_id!: string | null;
+
+  @Column({ nullable: true })
+  last_login?: Date;
 }
