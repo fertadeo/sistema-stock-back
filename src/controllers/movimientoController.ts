@@ -352,11 +352,16 @@ export const movimientoController = {
                 res.end();
             });
 
-            // Manejar errores de conexión
-            req.on('error', (error) => {
-                console.error('Error en la conexión SSE:', error);
+            // Manejar errores de conexión (abort/ECONNRESET es normal al navegar o refrescar)
+            req.on('error', (error: NodeJS.ErrnoException) => {
+                const code = error?.code;
+                if (code !== 'ECONNRESET' && code !== 'EPIPE' && error?.message !== 'aborted') {
+                    console.error('Error en la conexión SSE:', error);
+                }
                 eventService.cleanup();
-                res.end();
+                if (!res.writableEnded) {
+                    res.end();
+                }
             });
 
         } catch (error) {

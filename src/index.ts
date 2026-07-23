@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import express from 'express';
 import colors from 'colors';
-import { initializeDatabase } from './config/database';
+import { closeDatabase, initializeDatabase } from './config/database';
 import clientesRoutes from './routes/clientesRoutes';
 import { corsMiddleware } from './middlewares/cors';
 import { authenticateToken } from './middlewares/auth';
@@ -73,6 +73,37 @@ app.get('/', (req, res) => {
   res.send('¡Hola, mundo!');
 });
 
+let alertasInterval: ReturnType<typeof setInterval> | null = null;
+let isShuttingDown = false;
+
+const shutdown = async (signal: string) => {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+  console.log(`[shutdown] Señal ${signal}: cerrando pool de MySQL...`);
+
+  if (alertasInterval) {
+    clearInterval(alertasInterval);
+    alertasInterval = null;
+  }
+
+  try {
+    await closeDatabase();
+  } catch (error) {
+    console.error('[shutdown] Error al cerrar la base de datos:', error);
+  }
+
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
+});
+
 // Inicialización de la base de datos y arranque del servidor
 initializeDatabase().then(() => {
   pushNotificationService.logEstadoInicio();
@@ -81,7 +112,7 @@ initializeDatabase().then(() => {
     console.log(colors.blue(`Servidor escuchando en http://localhost:${port}`));
   });
 
-  setInterval(() => {
+  alertasInterval = setInterval(() => {
     void repartidorRutaService.procesarAlertasPendientes().catch((error) => {
       console.error('[ruta-alertas] Error procesando alertas:', error);
     });

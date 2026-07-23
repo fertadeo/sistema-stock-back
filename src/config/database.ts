@@ -73,7 +73,11 @@ const dbHost = resolveDbSetting('DB_HOST', 'DB_HOST_PROD', 'DB_HOST_DEV', 'local
 const dbUser = resolveDbSetting('DB_USER', 'DB_USER_PROD', 'DB_USER_DEV', 'root');
 const dbPassword = resolveDbSetting('DB_PASSWORD', 'DB_PASSWORD_PROD', 'DB_PASSWORD_DEV');
 const dbName = resolveDbSetting('DB_NAME', 'DB_NAME_PROD', 'DB_NAME_DEV', 'soderia');
-const dbPoolSize = Number(process.env.DB_POOL_SIZE ?? (isProduction ? 10 : 5));
+// En hosting compartido el max_connections de MySQL suele ser bajo; un pool chico evita saturar.
+const parsedPoolSize = Number(process.env.DB_POOL_SIZE ?? 3);
+const dbPoolSize = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? Math.min(parsedPoolSize, 10) : 3;
+const dbConnectRetries = Math.max(1, Number(process.env.DB_CONNECT_RETRIES ?? 8));
+const dbConnectRetryMs = Math.max(500, Number(process.env.DB_CONNECT_RETRY_MS ?? 5000));
 
 if (!dbPassword && isProduction) {
   console.error(
@@ -88,6 +92,7 @@ console.log({
   DB_USER: dbUser,
   DB_PASSWORD: dbPassword ? '***' : '(vacía)',
   DB_NAME: dbName,
+  DB_POOL_SIZE: dbPoolSize,
 });
 
 export const AppDataSource = new DataSource({
@@ -101,32 +106,84 @@ export const AppDataSource = new DataSource({
   logging: false,
   entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor, Movimiento, Cobro, MovimientoEnvase, OperacionPendiente, VisitaNoEncontrado, RepartidorUbicacion, RepartidorRutaParada, PushSubscription],
   extra: {
-    connectionLimit: Number.isFinite(dbPoolSize) && dbPoolSize > 0 ? dbPoolSize : 5,
+    connectionLimit: dbPoolSize,
     waitForConnections: true,
-    queueLimit: 20,
+    queueLimit: 50,
+    // Liberar conexiones ociosas rápido: otras apps del VPS comparten max_connections.
+    idleTimeout: 20_000,
+    maxIdle: 1,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10_000,
   },
-  poolSize: Number.isFinite(dbPoolSize) && dbPoolSize > 0 ? dbPoolSize : 5,
+  poolSize: dbPoolSize,
 });
 
 import { runPendingMigrations } from './runMigrations';
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTooManyConnectionsError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: string; errno?: number; message?: string };
+  return (
+    err.code === 'ER_CON_COUNT_ERROR' ||
+    err.errno === 1040 ||
+    String(err.message ?? '').toLowerCase().includes('too many connections')
+  );
+}
+
 export const initializeDatabase = async () => {
-  try {
-    if (AppDataSource.isInitialized) {
-      return;
-    }
-    if (!dbPassword && isProduction) {
-      throw new Error(
-        'Contraseña de MySQL no configurada. Revisa ecosystem.config.js (PM2) o el archivo .env.'
-      );
-    }
-    await AppDataSource.initialize();
-    console.log(`Conexión a la base de datos establecida (pool: ${dbPoolSize})`);
-    await runPendingMigrations(AppDataSource);
-  } catch (error) {
-    console.error('Error al conectar con la base de datos', error);
+  if (AppDataSource.isInitialized) {
+    return;
+  }
+  if (!dbPassword && isProduction) {
+    console.error(
+      'Contraseña de MySQL no configurada. Revisa ecosystem.config.js (PM2) o el archivo .env.'
+    );
     process.exit(1);
   }
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= dbConnectRetries; attempt++) {
+    try {
+      await AppDataSource.initialize();
+      console.log(`Conexión a la base de datos establecida (pool: ${dbPoolSize})`);
+      await runPendingMigrations(AppDataSource);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `Error al conectar con la base de datos (intento ${attempt}/${dbConnectRetries})`,
+        error
+      );
+
+      if (AppDataSource.isInitialized) {
+        try {
+          await AppDataSource.destroy();
+        } catch {
+          // ignore
+        }
+      }
+
+      if (attempt < dbConnectRetries) {
+        const waitMs = isTooManyConnectionsError(error)
+          ? dbConnectRetryMs * attempt
+          : dbConnectRetryMs;
+        console.warn(
+          `[database] Reintentando en ${waitMs}ms` +
+            (isTooManyConnectionsError(error)
+              ? ' (MySQL saturado: bajá DB_POOL_SIZE y cerrá procesos PM2 duplicados)'
+              : '')
+        );
+        await sleep(waitMs);
+      }
+    }
+  }
+
+  console.error('No se pudo conectar a la base de datos tras varios intentos', lastError);
+  process.exit(1);
 };
 
 export const closeDatabase = async () => {

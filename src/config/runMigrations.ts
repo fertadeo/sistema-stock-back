@@ -220,6 +220,36 @@ async function migrarRolesUsuario(dataSource: DataSource): Promise<void> {
   }
 }
 
+async function migrarCamposUsuario(dataSource: DataSource): Promise<void> {
+  if (!(await columnaExiste(dataSource, 'user', 'nombre'))) {
+    console.log('[migrations] Agregando columna user.nombre...');
+    await dataSource.query(
+      'ALTER TABLE `user` ADD COLUMN `nombre` VARCHAR(255) NULL DEFAULT NULL AFTER `password`'
+    );
+  } else {
+    console.log('[migrations] user.nombre ya existe.');
+  }
+
+  if (!(await columnaExiste(dataSource, 'user', 'activo'))) {
+    console.log('[migrations] Agregando columna user.activo...');
+    await dataSource.query(
+      'ALTER TABLE `user` ADD COLUMN `activo` TINYINT(1) NOT NULL DEFAULT 1 AFTER `nombre`'
+    );
+    await dataSource.query('UPDATE `user` SET `activo` = 1 WHERE `activo` IS NULL');
+  } else {
+    console.log('[migrations] user.activo ya existe.');
+  }
+
+  if (!(await columnaExiste(dataSource, 'user', 'last_login'))) {
+    console.log('[migrations] Agregando columna user.last_login...');
+    await dataSource.query(
+      'ALTER TABLE `user` ADD COLUMN `last_login` DATETIME NULL DEFAULT NULL AFTER `repartidor_id`'
+    );
+  } else {
+    console.log('[migrations] user.last_login ya existe.');
+  }
+}
+
 async function migrarRepartidorRuta(dataSource: DataSource): Promise<void> {
   if (!(await tablaExiste(dataSource, 'repartidor_ruta_paradas'))) {
     console.log('[migrations] Creando tabla repartidor_ruta_paradas...');
@@ -273,6 +303,7 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
   await migrarPisoDepartamentoClientes(dataSource);
   await migrarRepartidorUbicaciones(dataSource);
   await migrarRolesUsuario(dataSource);
+  await migrarCamposUsuario(dataSource);
   await migrarRepartidorRuta(dataSource);
   await migrarRepartidorAxelAFernando(dataSource);
 
