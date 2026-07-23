@@ -44,15 +44,16 @@ export const obtenerRepartidorNombreDeUsuario = async (
 };
 
 /**
- * undefined = admin/superadmin (sin filtro)
- * null = repartidor sin repartidor_id asignado (sin clientes)
- * string = nombre del repartidor para filtrar
+ * Filtro de clientes por repartidor asignado.
+ * undefined = sin filtro (acceso a toda la lista).
+ *
+ * Los repartidores tienen scope total sobre la lista de clientes
+ * (pueden ver y operar con cualquier cliente).
  */
 export const obtenerFiltroRepartidor = async (
-  user?: AuthUserPayload
+  _user?: AuthUserPayload
 ): Promise<string | null | undefined> => {
-  if (!user || !esUsuarioRepartidor(user)) return undefined;
-  return obtenerRepartidorNombreDeUsuario(user);
+  return undefined;
 };
 
 export const filtrarClientesPorRepartidor = <T extends { repartidor?: string | null }>(
