@@ -248,6 +248,15 @@ async function migrarCamposUsuario(dataSource: DataSource): Promise<void> {
   } else {
     console.log('[migrations] user.last_login ya existe.');
   }
+
+  if (!(await columnaExiste(dataSource, 'user', 'solo_clientes_propios'))) {
+    console.log('[migrations] Agregando columna user.solo_clientes_propios...');
+    await dataSource.query(
+      'ALTER TABLE `user` ADD COLUMN `solo_clientes_propios` TINYINT(1) NOT NULL DEFAULT 0 AFTER `repartidor_id`'
+    );
+  } else {
+    console.log('[migrations] user.solo_clientes_propios ya existe.');
+  }
 }
 
 async function migrarRepartidorRuta(dataSource: DataSource): Promise<void> {

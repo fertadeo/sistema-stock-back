@@ -14,6 +14,7 @@ const serializeUser = (user: User) => ({
   role: user.role,
   role_label: roleLabel(user.role),
   repartidor_id: user.repartidor_id,
+  solo_clientes_propios: Boolean(user.solo_clientes_propios),
   nombre: user.nombre,
   activo: user.activo,
   created_at: user.created_at,
@@ -78,7 +79,7 @@ export const getUsers = async (_req: AuthRequest, res: Response) => {
 };
 
 export const createUser = async (req: AuthRequest, res: Response) => {
-  const { email, password, role, repartidor_id, nombre } = req.body;
+  const { email, password, role, repartidor_id, nombre, solo_clientes_propios } = req.body;
   const actor = req.user!;
 
   try {
@@ -96,6 +97,13 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 
     if (role === USER_ROLES.REPARTIDOR && !repartidor_id) {
       return res.status(400).json({ message: 'Debe seleccionar un repartidor para cuentas de repartidor' });
+    }
+
+    if (
+      solo_clientes_propios !== undefined &&
+      typeof solo_clientes_propios !== 'boolean'
+    ) {
+      return res.status(400).json({ message: 'solo_clientes_propios debe ser boolean' });
     }
 
     const existingUser = await AppDataSource.getRepository(User).findOneBy({ email });
@@ -117,6 +125,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       activo: true,
       nivel_usuario: nivelFromRole(role),
       repartidor_id: repartidorIdValidado,
+      solo_clientes_propios:
+        role === USER_ROLES.REPARTIDOR ? Boolean(solo_clientes_propios) : false,
     });
 
     await AppDataSource.getRepository(User).save(newUser);
@@ -136,7 +146,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 
 export const updateUser = async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
-  const { role, repartidor_id, password, nombre, activo } = req.body;
+  const { role, repartidor_id, password, nombre, activo, solo_clientes_propios } = req.body;
   const actor = req.user!;
 
   try {
@@ -149,6 +159,13 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
 
     if (!canManageUser(actor, user)) {
       return res.status(403).json({ message: 'No tiene permisos para modificar este usuario' });
+    }
+
+    if (
+      solo_clientes_propios !== undefined &&
+      typeof solo_clientes_propios !== 'boolean'
+    ) {
+      return res.status(400).json({ message: 'solo_clientes_propios debe ser boolean' });
     }
 
     if (role !== undefined) {
@@ -186,7 +203,14 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
         user.repartidor_id = repartidorIdValidado;
       } else {
         user.repartidor_id = null;
+        user.solo_clientes_propios = false;
       }
+    }
+
+    if (rolFinal === USER_ROLES.REPARTIDOR && solo_clientes_propios !== undefined) {
+      user.solo_clientes_propios = solo_clientes_propios;
+    } else if (rolFinal !== USER_ROLES.REPARTIDOR) {
+      user.solo_clientes_propios = false;
     }
 
     if (password) {
@@ -196,7 +220,14 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       user.password = await bcrypt.hash(password, saltRounds);
     }
 
-    if (role === undefined && repartidor_id === undefined && !password && nombre === undefined && activo === undefined) {
+    if (
+      role === undefined &&
+      repartidor_id === undefined &&
+      !password &&
+      nombre === undefined &&
+      activo === undefined &&
+      solo_clientes_propios === undefined
+    ) {
       return res.status(400).json({ message: 'No hay cambios para aplicar' });
     }
 

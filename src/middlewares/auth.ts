@@ -12,6 +12,8 @@ export interface AuthUserPayload {
   email: string;
   role: UserRole;
   repartidor_id?: string | null;
+  /** Solo relevante para role=repartidor; default false = ve todos. */
+  solo_clientes_propios?: boolean;
 }
 
 export interface AuthRequest extends Request {
@@ -73,6 +75,7 @@ export const authenticateToken = async (
       email: user.email,
       role,
       repartidor_id: user.repartidor_id ? String(user.repartidor_id) : null,
+      solo_clientes_propios: Boolean(user.solo_clientes_propios),
     };
 
     next();

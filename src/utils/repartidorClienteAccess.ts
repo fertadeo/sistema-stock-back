@@ -3,7 +3,6 @@ import { Clientes } from '../entities/Clientes';
 import { Repartidor } from '../entities/Repartidor';
 import { AuthRequest, AuthUserPayload } from '../middlewares/auth';
 import { USER_ROLES } from '../constants/roles';
-import { obtenerConfiguracionSistema } from '../services/configuracionSistemaService';
 
 export class ClienteAccesoDenegadoError extends Error {
   constructor(message = 'Sin acceso a este cliente') {
@@ -46,11 +45,11 @@ export const obtenerRepartidorNombreDeUsuario = async (
 
 /**
  * Filtro de listado:
- * - undefined = sin filtro (todos los clientes; default o admin)
- * - null = repartidor sin repartidor_id (sin clientes)
+ * - undefined = sin filtro (todos los clientes; default, admin, o dueño sin restricción)
+ * - null = repartidor restringido sin repartidor_id (sin clientes)
  * - string = solo clientes de ese repartidor
  *
- * El modo restringido se activa con configuracion_sistema.repartidor_solo_clientes_propios.
+ * La restricción es por usuario (user.solo_clientes_propios), no global.
  */
 export const obtenerFiltroRepartidor = async (
   user?: AuthUserPayload
@@ -59,8 +58,7 @@ export const obtenerFiltroRepartidor = async (
     return undefined;
   }
 
-  const config = await obtenerConfiguracionSistema();
-  if (!config.repartidor_solo_clientes_propios) {
+  if (!user.solo_clientes_propios) {
     return undefined;
   }
 

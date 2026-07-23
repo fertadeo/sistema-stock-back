@@ -29,6 +29,7 @@ const serializeUser = async (user: User) => {
     role_label: roleLabel(user.role),
     repartidor_id: user.repartidor_id,
     repartidor_nombre,
+    solo_clientes_propios: Boolean(user.solo_clientes_propios),
     created_at: user.created_at,
   };
 };
@@ -94,6 +95,7 @@ router.post('/login', async (req, res) => {
       email: user.email,
       role,
       repartidor_id: user.repartidor_id,
+      solo_clientes_propios: Boolean(user.solo_clientes_propios),
     });
 
     res.json({

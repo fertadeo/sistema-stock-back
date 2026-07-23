@@ -30,6 +30,14 @@ export class User {
   @Column({ type: 'varchar', length: 36, nullable: true })
   repartidor_id!: string | null;
 
+  /**
+   * Solo aplica a role=repartidor.
+   * false (default): ve todos los clientes.
+   * true: solo ve clientes asignados a él (útil para empleados).
+   */
+  @Column({ type: 'boolean', default: false })
+  solo_clientes_propios!: boolean;
+
   @Column({ nullable: true })
   last_login?: Date;
 }
