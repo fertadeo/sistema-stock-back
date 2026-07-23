@@ -5,8 +5,8 @@ import { AuthRequest, AuthUserPayload } from '../middlewares/auth';
 import { USER_ROLES } from '../constants/roles';
 
 export class ClienteAccesoDenegadoError extends Error {
-  constructor() {
-    super('Sin acceso a este cliente');
+  constructor(message = 'Sin acceso a este cliente') {
+    super(message);
     this.name = 'ClienteAccesoDenegadoError';
   }
 }
@@ -44,11 +44,7 @@ export const obtenerRepartidorNombreDeUsuario = async (
 };
 
 /**
- * Filtro de clientes por repartidor asignado.
- * undefined = sin filtro (acceso a toda la lista).
- *
- * Los repartidores tienen scope total sobre la lista de clientes
- * (pueden ver y operar con cualquier cliente).
+ * Filtro de listado: undefined = sin filtro (todos los clientes visibles).
  */
 export const obtenerFiltroRepartidor = async (
   _user?: AuthUserPayload
@@ -69,12 +65,33 @@ export const filtrarClientesPorRepartidor = <T extends { repartidor?: string | n
 
 const clienteRepository = AppDataSource.getRepository(Clientes);
 
+/** Lectura / operaciones: los repartidores pueden ver cualquier cliente. */
 export const verificarAccesoClientePorId = async (
   req: AuthRequest,
   clienteId: number
 ): Promise<void> => {
-  const filtroRepartidor = await obtenerFiltroRepartidor(req.user);
-  if (filtroRepartidor === undefined) return;
+  const cliente = await clienteRepository.findOne({
+    where: { id: clienteId },
+    select: ['id'],
+  });
+
+  if (!cliente) {
+    throw new Error('Cliente no encontrado');
+  }
+};
+
+/**
+ * Modificación de ficha de cliente:
+ * - admin/superadmin: siempre
+ * - repartidor: solo si el cliente no tiene repartidor o está asignado a él
+ */
+export const verificarModificacionClientePorId = async (
+  req: AuthRequest,
+  clienteId: number
+): Promise<void> => {
+  if (!req.user || !esUsuarioRepartidor(req.user)) {
+    return;
+  }
 
   const cliente = await clienteRepository.findOne({
     where: { id: clienteId },
@@ -85,8 +102,16 @@ export const verificarAccesoClientePorId = async (
     throw new Error('Cliente no encontrado');
   }
 
-  if (!filtroRepartidor || !coincideRepartidorNombre(cliente.repartidor, filtroRepartidor)) {
-    throw new ClienteAccesoDenegadoError();
+  const asignado = cliente.repartidor?.trim() || '';
+  if (!asignado) {
+    return;
+  }
+
+  const miNombre = await obtenerRepartidorNombreDeUsuario(req.user);
+  if (!miNombre || !coincideRepartidorNombre(asignado, miNombre)) {
+    throw new ClienteAccesoDenegadoError(
+      `Este cliente está asignado a ${asignado}. No podés modificarlo.`
+    );
   }
 };
 

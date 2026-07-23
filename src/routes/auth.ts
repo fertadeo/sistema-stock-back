@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import { AppDataSource } from '../config/database';
 import { User } from '../entities/User';
+import { Repartidor } from '../entities/Repartidor';
 import {
   AuthRequest,
   authenticateToken,
@@ -11,14 +12,26 @@ import { normalizeRole, roleLabel, USER_ROLES, UserRole } from '../constants/rol
 
 const router = Router();
 
-const serializeUser = (user: User) => ({
-  id: user.id,
-  email: user.email,
-  role: user.role,
-  role_label: roleLabel(user.role),
-  repartidor_id: user.repartidor_id,
-  created_at: user.created_at,
-});
+const serializeUser = async (user: User) => {
+  let repartidor_nombre: string | null = null;
+  if (user.repartidor_id) {
+    const id = Number(user.repartidor_id);
+    if (!Number.isNaN(id)) {
+      const repartidor = await AppDataSource.getRepository(Repartidor).findOneBy({ id });
+      repartidor_nombre = repartidor?.nombre?.trim() || null;
+    }
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    role_label: roleLabel(user.role),
+    repartidor_id: user.repartidor_id,
+    repartidor_nombre,
+    created_at: user.created_at,
+  };
+};
 
 router.post('/register', async (req, res) => {
   const { email, password, role, repartidor_id } = req.body;
@@ -48,7 +61,7 @@ router.post('/register', async (req, res) => {
 
     res.status(201).json({
       message: 'Usuario registrado correctamente',
-      user: serializeUser(newUser),
+      user: await serializeUser(newUser),
     });
   } catch (error) {
     console.error(error);
@@ -85,7 +98,7 @@ router.post('/login', async (req, res) => {
 
     res.json({
       token,
-      user: serializeUser({ ...user, role }),
+      user: await serializeUser({ ...user, role }),
     });
   } catch (error) {
     console.error(error);
@@ -106,7 +119,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
     const role = user.role || normalizeRole(user.nivel_usuario);
 
     res.json({
-      user: serializeUser({ ...user, role }),
+      user: await serializeUser({ ...user, role }),
     });
   } catch (error) {
     console.error(error);

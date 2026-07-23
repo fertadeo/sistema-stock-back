@@ -13,6 +13,7 @@ import {
   esErrorAccesoCliente,
   obtenerFiltroRepartidor,
   verificarAccesoClientePorId,
+  verificarModificacionClientePorId,
 } from '../utils/repartidorClienteAccess';
 
 interface EnvasePrestado {
@@ -431,7 +432,7 @@ export const updateCliente = async (req: AuthRequest, res: Response) => {
   const { envases_prestados, zona, latitud, longitud, ...datosCliente } = req.body;
 
   try {
-    await verificarAccesoClientePorId(req, id);
+    await verificarModificacionClientePorId(req, id);
 
     // Verificar que el cliente existe
     const clienteExistente = await clienteRepository.findOne({
@@ -598,7 +599,7 @@ export const deleteCliente = async (req: AuthRequest, res: Response) => {
   const id = parseInt(req.params.id);
 
   try {
-    await verificarAccesoClientePorId(req, id);
+    await verificarModificacionClientePorId(req, id);
 
     // Primero eliminamos los envases prestados asociados al cliente
     const envaseRepository = AppDataSource.getRepository(EnvasesPrestados);
@@ -692,7 +693,7 @@ export const toggleEstadoCliente = async (req: AuthRequest, res: Response) => {
         const id = parseInt(req.params.id);
         const { estado } = req.body;
 
-        await verificarAccesoClientePorId(req, id);
+        await verificarModificacionClientePorId(req, id);
 
         const cliente = await clienteRepository.findOne({
             where: { id }
@@ -748,7 +749,7 @@ export const vincularCliente = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ success: false, message: 'ID de cliente inválido' });
         }
 
-        await verificarAccesoClientePorId(req, id);
+        await verificarModificacionClientePorId(req, id);
 
         const otroId = Number(cliente_vinculado_id);
         if (!otroId || isNaN(otroId)) {
@@ -786,7 +787,7 @@ export const desvincularCliente = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ success: false, message: 'ID de cliente inválido' });
         }
 
-        await verificarAccesoClientePorId(req, id);
+        await verificarModificacionClientePorId(req, id);
 
         await clienteVinculacionService.desvincular(id);
         const clienteNormalizado = await obtenerClienteNormalizado(id);
