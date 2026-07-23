@@ -25,6 +25,7 @@ import repartidorRapidoRoutes from './routes/repartidorRapidoRoutes';
 import sincronizacionRoutes from './routes/sincronizacionRoutes';
 import repartidorRutaRoutes from './routes/repartidorRutaRoutes';
 import facturacionRoutes from './routes/facturacionRoutes';
+import configuracionSistemaRoutes from './routes/configuracionSistemaRoutes';
 import { repartidorRutaService } from './services/repartidorRutaService';
 import { pushNotificationService } from './services/pushNotificationService';
 
@@ -68,6 +69,7 @@ app.use('/api/repartidor-rapido', repartidorRapidoRoutes);
 app.use('/api/sincronizacion', sincronizacionRoutes);
 app.use('/api/repartidor-ruta', repartidorRutaRoutes);
 app.use('/api/facturacion', facturacionRoutes);
+app.use('/api/configuracion', configuracionSistemaRoutes);
 
 app.get('/', (req, res) => {
   res.send('¡Hola, mundo!');

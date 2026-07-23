@@ -3,6 +3,7 @@ import { Clientes } from '../entities/Clientes';
 import { Repartidor } from '../entities/Repartidor';
 import { AuthRequest, AuthUserPayload } from '../middlewares/auth';
 import { USER_ROLES } from '../constants/roles';
+import { obtenerConfiguracionSistema } from '../services/configuracionSistemaService';
 
 export class ClienteAccesoDenegadoError extends Error {
   constructor(message = 'Sin acceso a este cliente') {
@@ -44,12 +45,26 @@ export const obtenerRepartidorNombreDeUsuario = async (
 };
 
 /**
- * Filtro de listado: undefined = sin filtro (todos los clientes visibles).
+ * Filtro de listado:
+ * - undefined = sin filtro (todos los clientes; default o admin)
+ * - null = repartidor sin repartidor_id (sin clientes)
+ * - string = solo clientes de ese repartidor
+ *
+ * El modo restringido se activa con configuracion_sistema.repartidor_solo_clientes_propios.
  */
 export const obtenerFiltroRepartidor = async (
-  _user?: AuthUserPayload
+  user?: AuthUserPayload
 ): Promise<string | null | undefined> => {
-  return undefined;
+  if (!user || !esUsuarioRepartidor(user)) {
+    return undefined;
+  }
+
+  const config = await obtenerConfiguracionSistema();
+  if (!config.repartidor_solo_clientes_propios) {
+    return undefined;
+  }
+
+  return obtenerRepartidorNombreDeUsuario(user);
 };
 
 export const filtrarClientesPorRepartidor = <T extends { repartidor?: string | null }>(
@@ -65,18 +80,38 @@ export const filtrarClientesPorRepartidor = <T extends { repartidor?: string | n
 
 const clienteRepository = AppDataSource.getRepository(Clientes);
 
-/** Lectura / operaciones: los repartidores pueden ver cualquier cliente. */
+/**
+ * Lectura / operaciones sobre un cliente:
+ * - sin filtro (default): cualquier cliente existente
+ * - con solo_clientes_propios: solo los asignados al repartidor
+ */
 export const verificarAccesoClientePorId = async (
   req: AuthRequest,
   clienteId: number
 ): Promise<void> => {
+  const filtroRepartidor = await obtenerFiltroRepartidor(req.user);
+  if (filtroRepartidor === undefined) {
+    const existe = await clienteRepository.findOne({
+      where: { id: clienteId },
+      select: ['id'],
+    });
+    if (!existe) {
+      throw new Error('Cliente no encontrado');
+    }
+    return;
+  }
+
   const cliente = await clienteRepository.findOne({
     where: { id: clienteId },
-    select: ['id'],
+    select: ['id', 'repartidor'],
   });
 
   if (!cliente) {
     throw new Error('Cliente no encontrado');
+  }
+
+  if (!filtroRepartidor || !coincideRepartidorNombre(cliente.repartidor, filtroRepartidor)) {
+    throw new ClienteAccesoDenegadoError('Sin acceso a este cliente');
   }
 };
 

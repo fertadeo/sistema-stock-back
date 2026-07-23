@@ -295,6 +295,33 @@ async function migrarRepartidorRuta(dataSource: DataSource): Promise<void> {
   }
 }
 
+async function migrarConfiguracionSistema(dataSource: DataSource): Promise<void> {
+  if (!(await tablaExiste(dataSource, 'configuracion_sistema'))) {
+    console.log('[migrations] Creando tabla configuracion_sistema...');
+    await dataSource.query(`
+      CREATE TABLE \`configuracion_sistema\` (
+        \`id\` INT NOT NULL,
+        \`repartidor_solo_clientes_propios\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`actualizado_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+  } else {
+    console.log('[migrations] configuracion_sistema ya existe.');
+  }
+
+  const filas = await dataSource.query(
+    'SELECT COUNT(*) AS total FROM configuracion_sistema WHERE id = 1'
+  );
+  if (Number(filas[0]?.total ?? 0) === 0) {
+    console.log('[migrations] Insertando fila default de configuracion_sistema...');
+    await dataSource.query(`
+      INSERT INTO configuracion_sistema (id, repartidor_solo_clientes_propios)
+      VALUES (1, 0)
+    `);
+  }
+}
+
 export async function runPendingMigrations(dataSource: DataSource): Promise<void> {
   const base = await obtenerNombreBase(dataSource);
   console.log(`[migrations] Verificando esquema en base de datos: ${base}`);
@@ -306,6 +333,7 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
   await migrarCamposUsuario(dataSource);
   await migrarRepartidorRuta(dataSource);
   await migrarRepartidorAxelAFernando(dataSource);
+  await migrarConfiguracionSistema(dataSource);
 
   console.log('[migrations] Esquema verificado correctamente.');
 }
