@@ -4,7 +4,8 @@
  * Usar bloque "env" (no solo env_production) para que PM2 cargue las variables
  * con: pm2 start ecosystem.config.js
  *
- * En VPS con max_connections bajo y varias apps MySQL, mantener DB_POOL_SIZE en 2.
+ * En VPS con max_connections bajo y varias apps MySQL, mantener DB_POOL_SIZE en 1
+ * y una sola instancia PM2 (fork). Matá procesos viejos: pm2 delete all && pm2 start ...
  */
 module.exports = {
   apps: [
@@ -27,7 +28,7 @@ module.exports = {
         DB_USER: 'fenecstudio',
         DB_PASSWORD: 'TU_PASSWORD_AQUI',
         DB_NAME: 'soderia',
-        DB_POOL_SIZE: '2',
+        DB_POOL_SIZE: '1',
         JWT_SECRET: 'tu_jwt_secret',
         GOOGLE_MAPS_API_KEY: 'tu_api_key',
         FRONTEND_URL: 'https://sistema.soderiadonjavier.com',

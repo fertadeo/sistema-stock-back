@@ -74,9 +74,9 @@ const dbHost = resolveDbSetting('DB_HOST', 'DB_HOST_PROD', 'DB_HOST_DEV', 'local
 const dbUser = resolveDbSetting('DB_USER', 'DB_USER_PROD', 'DB_USER_DEV', 'root');
 const dbPassword = resolveDbSetting('DB_PASSWORD', 'DB_PASSWORD_PROD', 'DB_PASSWORD_DEV');
 const dbName = resolveDbSetting('DB_NAME', 'DB_NAME_PROD', 'DB_NAME_DEV', 'soderia');
-// En hosting compartido el max_connections de MySQL suele ser bajo; un pool chico evita saturar.
-const parsedPoolSize = Number(process.env.DB_POOL_SIZE ?? 2);
-const dbPoolSize = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? Math.min(parsedPoolSize, 5) : 2;
+// Hosting compartido: 1 conexión por proceso. Varias apps PM2 + pool alto saturan max_connections.
+const parsedPoolSize = Number(process.env.DB_POOL_SIZE ?? 1);
+const dbPoolSize = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? Math.min(parsedPoolSize, 2) : 1;
 const dbConnectRetries = Math.max(1, Number(process.env.DB_CONNECT_RETRIES ?? 8));
 const dbConnectRetryMs = Math.max(500, Number(process.env.DB_CONNECT_RETRY_MS ?? 5000));
 
@@ -109,12 +109,13 @@ export const AppDataSource = new DataSource({
   extra: {
     connectionLimit: dbPoolSize,
     waitForConnections: true,
-    queueLimit: 50,
-    // Liberar conexiones ociosas rápido: otras apps del VPS comparten max_connections.
-    idleTimeout: 20_000,
-    maxIdle: 1,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10_000,
+    // Cola corta: mejor fallar rápido que acumular requests abiertas.
+    queueLimit: 20,
+    // Liberar ya: no retener idle en un VPS con max_connections bajo.
+    idleTimeout: 5_000,
+    maxIdle: 0,
+    enableKeepAlive: false,
+    connectTimeout: 10_000,
   },
   poolSize: dbPoolSize,
 });

@@ -106,6 +106,21 @@ const responderError = (res: Response, error: unknown, mensajePorDefecto: string
     }
   }
 
+  const err = error as { code?: string; errno?: number; message?: string };
+  const tooManyConnections =
+    err?.code === 'ER_CON_COUNT_ERROR' ||
+    err?.errno === 1040 ||
+    String(err?.message ?? '').toLowerCase().includes('too many connections');
+
+  if (tooManyConnections) {
+    console.error(`[CuentaCorrienteController] ${mensajePorDefecto}: MySQL sin conexiones libres`);
+    return res.status(503).json({
+      success: false,
+      message: 'Base de datos saturada. Reintentá en unos segundos.',
+      error: 'Too many connections'
+    });
+  }
+
   console.error(`[CuentaCorrienteController] ${mensajePorDefecto}:`, error);
 
   return res.status(500).json({

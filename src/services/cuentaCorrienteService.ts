@@ -49,6 +49,72 @@ const movimientoService = new MovimientoService();
 
 const redondearMonto = (valor: number): number => Math.round(valor * 100) / 100;
 
+const DEUDORES_CACHE_TTL_MS = 45_000;
+
+interface DeudorListItem {
+  cliente_id: number;
+  nombre: string;
+  telefono: string;
+  direccion: string;
+  estado: boolean;
+  zona: number | null;
+  repartidor: string;
+  dia_reparto: string;
+  saldo_actual: number;
+  total_debitos: number;
+  total_creditos: number;
+  cantidad_movimientos: number;
+  ultimo_movimiento_at: string | null;
+}
+
+interface DeudoresPayload {
+  deudores: DeudorListItem[];
+  paginacion: {
+    total: number;
+    pagina: number;
+    porPagina: number;
+    totalPaginas: number;
+  };
+}
+
+const deudoresCache = new Map<string, { expiresAt: number; payload: DeudoresPayload }>();
+
+const invalidarCacheDeudores = () => {
+  deudoresCache.clear();
+};
+
+const isTooManyConnectionsError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: string; errno?: number; message?: string };
+  return (
+    err.code === 'ER_CON_COUNT_ERROR' ||
+    err.errno === 1040 ||
+    String(err.message ?? '').toLowerCase().includes('too many connections')
+  );
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function queryWithRetry<T = unknown>(sql: string, params: unknown[] = []): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return (await AppDataSource.query(sql, params)) as T;
+    } catch (error) {
+      lastError = error;
+      if (!isTooManyConnectionsError(error) || attempt === 3) {
+        throw error;
+      }
+      const waitMs = 400 * attempt;
+      console.warn(
+        `[CuentaCorrienteService] MySQL saturado (intento ${attempt}/3). Reintentando en ${waitMs}ms...`
+      );
+      await sleep(waitMs);
+    }
+  }
+  throw lastError;
+}
+
 const serializarFecha = (fecha: Date | string): string => new Date(fecha).toISOString();
 const MENSAJE_TABLA_COBROS_FALTANTE =
   'La tabla cobros no existe en la base de datos. Ejecuta la migración `migrations/crear_tabla_cobros.sql` o `migrations/crear_tablas_repartidor_rapido.sql`.';
@@ -307,6 +373,7 @@ export class CuentaCorrienteService {
 
       const cobroGuardado = await queryRunner.manager.save(cobro);
       await queryRunner.commitTransaction();
+      invalidarCacheDeudores();
 
       try {
         await movimientoService.registrarCobroCliente(monto, cliente.nombre, {
@@ -411,132 +478,168 @@ export class CuentaCorrienteService {
   }
 
   async obtenerClientesDeudores(filtros: Paginacion & { search?: string }) {
-    const [ventasConSaldo, cobros] = await Promise.all([
-      ventaRepository
-        .createQueryBuilder('venta')
-        .where('venta.cliente_id IS NOT NULL')
-        .andWhere("venta.cliente_id <> ''")
-        .andWhere('venta.saldo = :saldo', { saldo: true })
-        .getMany(),
-      this.obtenerCobros()
-    ]);
-
-    const debitosPorCliente = new Map<number, number>();
-    const creditosPorCliente = new Map<number, number>();
-    const movimientosPorCliente = new Map<number, number>();
-    const ultimoMovimientoPorCliente = new Map<number, Date>();
-
-    for (const venta of ventasConSaldo) {
-      const clienteId = Number(venta.cliente_id);
-      const debito = Number(venta.saldo_monto || 0);
-
-      if (Number.isNaN(clienteId) || Number.isNaN(debito) || debito <= 0) {
-        continue;
-      }
-
-      debitosPorCliente.set(clienteId, redondearMonto((debitosPorCliente.get(clienteId) || 0) + debito));
-      movimientosPorCliente.set(clienteId, (movimientosPorCliente.get(clienteId) || 0) + 1);
-
-      const fechaVenta = new Date(venta.fecha_venta);
-      const ultimaFecha = ultimoMovimientoPorCliente.get(clienteId);
-      if (!ultimaFecha || fechaVenta > ultimaFecha) {
-        ultimoMovimientoPorCliente.set(clienteId, fechaVenta);
-      }
-    }
-
-    for (const cobro of cobros) {
-      const clienteId = Number(cobro.cliente_id);
-      const credito = Number(cobro.monto || 0);
-
-      if (Number.isNaN(clienteId) || Number.isNaN(credito) || credito <= 0) {
-        continue;
-      }
-
-      creditosPorCliente.set(clienteId, redondearMonto((creditosPorCliente.get(clienteId) || 0) + credito));
-      movimientosPorCliente.set(clienteId, (movimientosPorCliente.get(clienteId) || 0) + 1);
-
-      const fechaCobro = new Date(cobro.fecha_cobro);
-      const ultimaFecha = ultimoMovimientoPorCliente.get(clienteId);
-      if (!ultimaFecha || fechaCobro > ultimaFecha) {
-        ultimoMovimientoPorCliente.set(clienteId, fechaCobro);
-      }
-    }
-
-    const idsConMovimientos = Array.from(
-      new Set([...debitosPorCliente.keys(), ...creditosPorCliente.keys()])
-    );
-
-    const clientes =
-      idsConMovimientos.length === 0
-        ? []
-        : await clienteRepository
-            .createQueryBuilder('cliente')
-            .leftJoinAndSelect('cliente.zona', 'zona')
-            .where('cliente.id IN (:...ids)', { ids: idsConMovimientos })
-            .getMany();
-
+    const page = filtros.page;
+    const limit = filtros.limit;
+    const offset = (page - 1) * limit;
     const termino = normalizarTexto(filtros.search).trim().toLowerCase();
+    const cacheKey = `deudores:${termino}:${page}:${limit}`;
+    const cached = deudoresCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.payload;
+    }
 
-    const deudores = clientes
-      .filter((cliente) => {
-        if (!termino) {
-          return true;
-        }
+    const params: Array<string | number> = [];
+    let searchClause = '';
+    if (termino) {
+      searchClause = `AND (
+        LOWER(c.nombre) LIKE ?
+        OR LOWER(IFNULL(c.telefono, '')) LIKE ?
+        OR LOWER(IFNULL(c.direccion, '')) LIKE ?
+      )`;
+      const like = `%${termino}%`;
+      params.push(like, like, like);
+    }
 
-        return [cliente.nombre, cliente.telefono, cliente.direccion]
-          .map((valor) => normalizarTexto(valor).toLowerCase())
-          .filter(Boolean)
-          .some((valor) => valor.toLowerCase().includes(termino));
-      })
-      .map((cliente) => {
-        const totalDebitos = debitosPorCliente.get(cliente.id) || 0;
-        const totalCreditos = creditosPorCliente.get(cliente.id) || 0;
-        const saldoActual = redondearMonto(totalDebitos - totalCreditos);
-        const nombre = normalizarTexto(cliente.nombre);
-        const telefono = normalizarTexto(cliente.telefono);
-        const direccion = normalizarTexto(cliente.direccion);
-        const repartidor = normalizarTexto(cliente.repartidor);
-        const diaReparto = normalizarTexto(cliente.dia_reparto);
+    // Una sola query agregada: evita cargar todas las ventas/cobros en memoria
+    // y no abre 2-3 conexiones en paralelo.
+    const sql = `
+      SELECT
+        c.id AS cliente_id,
+        c.nombre AS nombre,
+        c.telefono AS telefono,
+        c.direccion AS direccion,
+        c.estado AS estado,
+        c.zona AS zona,
+        c.repartidor AS repartidor,
+        c.dia_reparto AS dia_reparto,
+        COALESCE(d.total_debitos, 0) AS total_debitos,
+        COALESCE(cr.total_creditos, 0) AS total_creditos,
+        (COALESCE(d.total_debitos, 0) - COALESCE(cr.total_creditos, 0)) AS saldo_actual,
+        (COALESCE(d.cantidad, 0) + COALESCE(cr.cantidad, 0)) AS cantidad_movimientos,
+        CASE
+          WHEN d.ultimo_at IS NULL THEN cr.ultimo_at
+          WHEN cr.ultimo_at IS NULL THEN d.ultimo_at
+          WHEN d.ultimo_at >= cr.ultimo_at THEN d.ultimo_at
+          ELSE cr.ultimo_at
+        END AS ultimo_movimiento_at
+      FROM clientes c
+      LEFT JOIN (
+        SELECT
+          CAST(v.cliente_id AS UNSIGNED) AS cliente_id,
+          SUM(CAST(v.saldo_monto AS DECIMAL(12,2))) AS total_debitos,
+          COUNT(*) AS cantidad,
+          MAX(v.fecha_venta) AS ultimo_at
+        FROM venta v
+        WHERE v.saldo = 1
+          AND v.cliente_id IS NOT NULL
+          AND v.cliente_id <> ''
+          AND CAST(v.saldo_monto AS DECIMAL(12,2)) > 0
+        GROUP BY CAST(v.cliente_id AS UNSIGNED)
+      ) d ON d.cliente_id = c.id
+      LEFT JOIN (
+        SELECT
+          cob.cliente_id AS cliente_id,
+          SUM(cob.monto) AS total_creditos,
+          COUNT(*) AS cantidad,
+          MAX(cob.fecha_cobro) AS ultimo_at
+        FROM cobros cob
+        GROUP BY cob.cliente_id
+      ) cr ON cr.cliente_id = c.id
+      WHERE (COALESCE(d.total_debitos, 0) - COALESCE(cr.total_creditos, 0)) > 0
+        ${searchClause}
+      ORDER BY saldo_actual DESC, c.nombre ASC
+      LIMIT ? OFFSET ?
+    `;
 
-        return {
-          cliente_id: cliente.id,
-          nombre,
-          telefono,
-          direccion,
-          estado: cliente.estado,
-          zona: cliente.zona?.id ?? null,
-          repartidor,
-          dia_reparto: diaReparto,
-          saldo_actual: saldoActual,
-          total_debitos: redondearMonto(totalDebitos),
-          total_creditos: redondearMonto(totalCreditos),
-          cantidad_movimientos: movimientosPorCliente.get(cliente.id) || 0,
-          ultimo_movimiento_at: ultimoMovimientoPorCliente.get(cliente.id)
-            ? serializarFecha(ultimoMovimientoPorCliente.get(cliente.id) as Date)
-            : null
-        };
-      })
-      .filter((cliente) => cliente.saldo_actual > 0)
-      .sort((a, b) => {
-        if (b.saldo_actual !== a.saldo_actual) {
-          return b.saldo_actual - a.saldo_actual;
-        }
+    params.push(limit, offset);
 
-        return normalizarTexto(a.nombre).localeCompare(normalizarTexto(b.nombre));
-      });
+    const countSql = `
+      SELECT COUNT(*) AS total
+      FROM (
+        SELECT c.id
+        FROM clientes c
+        LEFT JOIN (
+          SELECT
+            CAST(v.cliente_id AS UNSIGNED) AS cliente_id,
+            SUM(CAST(v.saldo_monto AS DECIMAL(12,2))) AS total_debitos
+          FROM venta v
+          WHERE v.saldo = 1
+            AND v.cliente_id IS NOT NULL
+            AND v.cliente_id <> ''
+            AND CAST(v.saldo_monto AS DECIMAL(12,2)) > 0
+          GROUP BY CAST(v.cliente_id AS UNSIGNED)
+        ) d ON d.cliente_id = c.id
+        LEFT JOIN (
+          SELECT
+            cob.cliente_id AS cliente_id,
+            SUM(cob.monto) AS total_creditos
+          FROM cobros cob
+          GROUP BY cob.cliente_id
+        ) cr ON cr.cliente_id = c.id
+        WHERE (COALESCE(d.total_debitos, 0) - COALESCE(cr.total_creditos, 0)) > 0
+          ${searchClause}
+      ) t
+    `;
 
-    const total = deudores.length;
-    const resultados = deudores.slice((filtros.page - 1) * filtros.limit, filtros.page * filtros.limit);
+    const countParams = termino
+      ? [`%${termino}%`, `%${termino}%`, `%${termino}%`]
+      : [];
 
-    return {
-      deudores: resultados,
+    const rows = await queryWithRetry<Array<Record<string, unknown>>>(sql, params);
+
+    // Evita segunda query si la primera página no está completa.
+    let total = 0;
+    if (page === 1 && rows.length < limit) {
+      total = rows.length;
+    } else {
+      const countRows = await queryWithRetry<Array<{ total: number | string }>>(
+        countSql,
+        countParams
+      );
+      total = Number(countRows[0]?.total ?? 0);
+    }
+
+    const deudores: DeudorListItem[] = rows.map((row) => {
+      const totalDebitos = redondearMonto(Number(row.total_debitos || 0));
+      const totalCreditos = redondearMonto(Number(row.total_creditos || 0));
+      const saldoActual = redondearMonto(Number(row.saldo_actual || 0));
+      const ultimo = row.ultimo_movimiento_at
+        ? serializarFecha(row.ultimo_movimiento_at as Date | string)
+        : null;
+
+      return {
+        cliente_id: Number(row.cliente_id),
+        nombre: normalizarTexto(row.nombre),
+        telefono: normalizarTexto(row.telefono),
+        direccion: normalizarTexto(row.direccion),
+        estado: Boolean(row.estado),
+        zona: row.zona == null || row.zona === '' ? null : Number(row.zona),
+        repartidor: normalizarTexto(row.repartidor),
+        dia_reparto: normalizarTexto(row.dia_reparto),
+        saldo_actual: saldoActual,
+        total_debitos: totalDebitos,
+        total_creditos: totalCreditos,
+        cantidad_movimientos: Number(row.cantidad_movimientos || 0),
+        ultimo_movimiento_at: ultimo
+      };
+    });
+
+    const payload: DeudoresPayload = {
+      deudores,
       paginacion: {
         total,
-        pagina: filtros.page,
-        porPagina: filtros.limit,
-        totalPaginas: Math.ceil(total / filtros.limit) || 1
+        pagina: page,
+        porPagina: limit,
+        totalPaginas: Math.ceil(total / limit) || 1
       }
     };
+
+    deudoresCache.set(cacheKey, {
+      expiresAt: Date.now() + DEUDORES_CACHE_TTL_MS,
+      payload
+    });
+
+    return payload;
   }
 
   /**
