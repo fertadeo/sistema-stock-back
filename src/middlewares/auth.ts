@@ -79,8 +79,23 @@ export const authenticateToken = async (
     };
 
     next();
-  } catch {
-    return res.status(401).json({ message: 'Token inválido o expirado' });
+  } catch (error) {
+    const err = error as { name?: string; code?: string; errno?: number; message?: string };
+    const isJwtError =
+      err?.name === 'JsonWebTokenError' ||
+      err?.name === 'TokenExpiredError' ||
+      err?.name === 'NotBeforeError';
+
+    if (isJwtError) {
+      return res.status(401).json({ message: 'Token inválido o expirado' });
+    }
+
+    // Errores de DB/red (p.ej. Too many connections) no deben cerrar la sesión del cliente.
+    console.error('[authenticateToken] Error al validar sesión:', error);
+    return res.status(503).json({
+      message: 'Servicio de autenticación temporalmente no disponible',
+      error: err?.message || 'Error desconocido',
+    });
   }
 };
 
