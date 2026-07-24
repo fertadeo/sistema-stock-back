@@ -136,4 +136,25 @@ export class MovimientoService {
         await this.movimientoRepository.save(movimientos);
         return movimientos.length;
     }
+
+    /** Reactiva movimientos CIERRE_VENTA al restaurar una venta cerrada. */
+    async reactivarPorVentaCerradaId(ventaCerradaId: number): Promise<number> {
+        const movimientos = await this.movimientoRepository
+            .createQueryBuilder('mov')
+            .where('mov.tipo = :tipo', { tipo: TipoMovimiento.CIERRE_VENTA })
+            .andWhere('mov.activo = :activo', { activo: false })
+            .andWhere("JSON_EXTRACT(mov.detalles, '$.venta_cerrada_id') = :id", { id: ventaCerradaId })
+            .getMany();
+
+        if (movimientos.length === 0) {
+            return 0;
+        }
+
+        for (const movimiento of movimientos) {
+            movimiento.activo = true;
+        }
+
+        await this.movimientoRepository.save(movimientos);
+        return movimientos.length;
+    }
 } 

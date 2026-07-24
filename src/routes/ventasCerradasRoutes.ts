@@ -6,7 +6,8 @@ import {
   getVentasCerradasByRepartidor,
   actualizarVentaCerrada,
   desagruparVentasCerradas,
-  eliminarVentaCerrada
+  eliminarVentaCerrada,
+  restaurarVentaCerrada
 } from '../controllers/ventaCerradaController';
 
 const router = express.Router();
@@ -16,6 +17,7 @@ router.get('/', getVentasCerradas);
 router.get('/repartidor/:repartidorId', getVentasCerradasByRepartidor);
 router.put('/finalizar', actualizarVentaCerrada);
 router.put('/desagrupar', desagruparVentasCerradas);
+router.put('/:id/restaurar', restaurarVentaCerrada);
 router.get('/:id', getVentaCerradaById);
 router.delete('/:id', eliminarVentaCerrada);
 

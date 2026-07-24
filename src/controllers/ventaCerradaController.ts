@@ -173,8 +173,8 @@ export const createVentaCerrada = async (req: Request, res: Response) => {
 
 export const getVentasCerradas = async (req: Request, res: Response) => {
   try {
+    // Incluye anuladas (soft delete) para poder verlas y rehabilitarlas en UI
     const ventasCerradas = await ventaCerradaRepository.find({
-      where: whereActivas,
       relations: ['repartidor'],
       order: { fecha_cierre: 'DESC' }
     });
@@ -240,6 +240,7 @@ export const getVentasCerradas = async (req: Request, res: Response) => {
         monto_transferencia: venta.monto_transferencia,
         balance_fiado,
         estado: venta.estado,
+        deleted_at: venta.deleted_at ?? null,
         repartidor: venta.repartidor ? {
           id: venta.repartidor.id,
           nombre: venta.repartidor.nombre
@@ -384,9 +385,9 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
       });
     }
 
-    // Obtener las ventas cerradas activas del repartidor
+    // Incluye anuladas (soft delete) para poder verlas y rehabilitarlas en UI
     const ventasCerradas = await ventaCerradaRepository.find({
-      where: { repartidor_id: repartidorId, ...whereActivas },
+      where: { repartidor_id: repartidorId },
       relations: ['repartidor'],
       order: { fecha_cierre: 'DESC' }
     });
@@ -452,6 +453,7 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
         monto_transferencia: venta.monto_transferencia,
         balance_fiado,
         estado: venta.estado,
+        deleted_at: venta.deleted_at ?? null,
         grupo_cierre: venta.grupo_cierre,
         repartidor: venta.repartidor ? {
           id: venta.repartidor.id,
@@ -463,13 +465,14 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
       };
     });
 
-    // Calcular totales
-    const totalVentas = ventasCerradas.reduce((sum, venta) => sum + Number(venta.total_venta), 0);
-    const totalGananciaRepartidor = ventasCerradas.reduce((sum, venta) => sum + Number(venta.ganancia_repartidor), 0);
-    const totalGananciaFabrica = ventasCerradas.reduce((sum, venta) => sum + Number(venta.ganancia_fabrica), 0);
-    const totalEfectivo = ventasCerradas.reduce((sum, venta) => sum + Number(venta.monto_efectivo), 0);
-    const totalTransferencia = ventasCerradas.reduce((sum, venta) => sum + Number(venta.monto_transferencia), 0);
-    const totalFiado = ventasCerradas.reduce((sum, venta) => sum + Number(venta.balance_fiado), 0);
+    // Totales solo con ventas no anuladas
+    const ventasActivas = ventasCerradas.filter(v => !v.deleted_at);
+    const totalVentas = ventasActivas.reduce((sum, venta) => sum + Number(venta.total_venta), 0);
+    const totalGananciaRepartidor = ventasActivas.reduce((sum, venta) => sum + Number(venta.ganancia_repartidor), 0);
+    const totalGananciaFabrica = ventasActivas.reduce((sum, venta) => sum + Number(venta.ganancia_fabrica), 0);
+    const totalEfectivo = ventasActivas.reduce((sum, venta) => sum + Number(venta.monto_efectivo), 0);
+    const totalTransferencia = ventasActivas.reduce((sum, venta) => sum + Number(venta.monto_transferencia), 0);
+    const totalFiado = ventasActivas.reduce((sum, venta) => sum + Number(venta.balance_fiado), 0);
 
     res.json({
       success: true,
@@ -759,6 +762,80 @@ export const eliminarVentaCerrada = async (req: Request, res: Response) => {
     res.status(500).json({ 
       success: false,
       message: 'Error al anular la venta cerrada',
+      error: (error as Error).message
+    });
+  }
+};
+
+export const restaurarVentaCerrada = async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const ventaCerrada = await ventaCerradaRepository.findOne({
+      where: { id }
+    });
+
+    if (!ventaCerrada) {
+      return res.status(404).json({
+        success: false,
+        message: 'Venta cerrada no encontrada'
+      });
+    }
+
+    if (!ventaCerrada.deleted_at) {
+      return res.status(400).json({
+        success: false,
+        message: 'La venta no está anulada'
+      });
+    }
+
+    const ventaActivaMismoProceso = await ventaCerradaRepository.findOne({
+      where: { proceso_id: ventaCerrada.proceso_id, ...whereActivas }
+    });
+    if (ventaActivaMismoProceso) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ya existe una venta activa para este proceso. No se puede rehabilitar.'
+      });
+    }
+
+    const queryRunner = AppDataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await queryRunner.manager.update(VentaCerrada, ventaCerrada.id, {
+        deleted_at: null
+      });
+
+      await queryRunner.manager
+        .createQueryBuilder()
+        .update('movimientos')
+        .set({ activo: true })
+        .where('tipo = :tipo', { tipo: 'CIERRE_VENTA' })
+        .andWhere('activo = :activo', { activo: false })
+        .andWhere("JSON_EXTRACT(detalles, '$.venta_cerrada_id') = :ventaId", {
+          ventaId: ventaCerrada.id
+        })
+        .execute();
+
+      await queryRunner.commitTransaction();
+
+      res.json({
+        success: true,
+        message: 'Venta rehabilitada correctamente. Vuelve a contar en los totales.'
+      });
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  } catch (error) {
+    console.error('Error al rehabilitar venta cerrada:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al rehabilitar la venta cerrada',
       error: (error as Error).message
     });
   }
