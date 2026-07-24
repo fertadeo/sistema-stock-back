@@ -55,4 +55,8 @@ export class VentaCerrada {
 
     @Column({ type: 'varchar', length: 50, nullable: true })
     grupo_cierre?: string | null;
+
+    /** Soft delete: anula el cierre sin borrar carga/descarga asociadas */
+    @Column({ type: 'timestamp', nullable: true, default: null })
+    deleted_at?: Date | null;
 }

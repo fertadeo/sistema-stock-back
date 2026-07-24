@@ -115,4 +115,25 @@ export class MovimientoService {
             where: { id, activo: true }
         });
     }
+
+    /** Desactiva movimientos CIERRE_VENTA vinculados a una venta cerrada (soft delete contable). */
+    async desactivarPorVentaCerradaId(ventaCerradaId: number): Promise<number> {
+        const movimientos = await this.movimientoRepository
+            .createQueryBuilder('mov')
+            .where('mov.tipo = :tipo', { tipo: TipoMovimiento.CIERRE_VENTA })
+            .andWhere('mov.activo = :activo', { activo: true })
+            .andWhere("JSON_EXTRACT(mov.detalles, '$.venta_cerrada_id') = :id", { id: ventaCerradaId })
+            .getMany();
+
+        if (movimientos.length === 0) {
+            return 0;
+        }
+
+        for (const movimiento of movimientos) {
+            movimiento.activo = false;
+        }
+
+        await this.movimientoRepository.save(movimientos);
+        return movimientos.length;
+    }
 } 

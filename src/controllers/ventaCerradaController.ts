@@ -3,8 +3,10 @@ import { AppDataSource } from '../config/database';
 import { VentaCerrada } from '../entities/VentaCerrada';
 import { Repartidor } from '../entities/Repartidor';
 import { Descarga } from '../entities/Descarga';
-import { In } from 'typeorm';
+import { In, IsNull } from 'typeorm';
 import { MovimientoService } from '../services/movimientoService';
+
+const whereActivas = { deleted_at: IsNull() };
 
 const ventaCerradaRepository = AppDataSource.getRepository(VentaCerrada);
 const repartidorRepository = AppDataSource.getRepository(Repartidor);
@@ -41,6 +43,16 @@ export const createVentaCerrada = async (req: Request, res: Response) => {
       return res.status(404).json({ 
         success: false, 
         message: 'La descarga no existe' 
+      });
+    }
+
+    const ventaExistente = await ventaCerradaRepository.findOne({
+      where: { proceso_id, ...whereActivas }
+    });
+    if (ventaExistente) {
+      return res.status(400).json({
+        success: false,
+        message: 'Este proceso ya tiene una venta cerrada activa'
       });
     }
 
@@ -162,6 +174,7 @@ export const createVentaCerrada = async (req: Request, res: Response) => {
 export const getVentasCerradas = async (req: Request, res: Response) => {
   try {
     const ventasCerradas = await ventaCerradaRepository.find({
+      where: whereActivas,
       relations: ['repartidor'],
       order: { fecha_cierre: 'DESC' }
     });
@@ -257,7 +270,7 @@ export const getVentaCerradaById = async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     
     const ventaCerrada = await ventaCerradaRepository.findOne({
-      where: { id },
+      where: { id, ...whereActivas },
       relations: ['repartidor']
     });
 
@@ -371,9 +384,9 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
       });
     }
 
-    // Obtener las ventas cerradas del repartidor
+    // Obtener las ventas cerradas activas del repartidor
     const ventasCerradas = await ventaCerradaRepository.find({
-      where: { repartidor_id: repartidorId },
+      where: { repartidor_id: repartidorId, ...whereActivas },
       relations: ['repartidor'],
       order: { fecha_cierre: 'DESC' }
     });
@@ -509,9 +522,9 @@ export const actualizarVentaCerrada = async (req: Request, res: Response) => {
       });
     }
 
-    // Buscar todas las ventas cerradas
+    // Buscar todas las ventas cerradas activas
     const ventasCerradas = await ventaCerradaRepository.find({
-      where: { id: In(ids) }
+      where: { id: In(ids), ...whereActivas }
     });
 
     if (ventasCerradas.length === 0) {
@@ -607,7 +620,7 @@ export const desagruparVentasCerradas = async (req: Request, res: Response) => {
     }
 
     const ventasCerradas = await ventaCerradaRepository.find({
-      where: { id: In(ids) }
+      where: { id: In(ids), ...whereActivas }
     });
 
     if (ventasCerradas.length === 0) {
@@ -687,11 +700,9 @@ export const desagruparVentasCerradas = async (req: Request, res: Response) => {
 export const eliminarVentaCerrada = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const ventaCerradaRepository = AppDataSource.getRepository(VentaCerrada);
-    const descargaRepository = AppDataSource.getRepository(Descarga);
     
     const ventaCerrada = await ventaCerradaRepository.findOne({
-      where: { id: parseInt(id) }
+      where: { id: parseInt(id), ...whereActivas }
     });
 
     if (!ventaCerrada) {
@@ -701,30 +712,41 @@ export const eliminarVentaCerrada = async (req: Request, res: Response) => {
       });
     }
 
-    // Iniciar transacción
+    // No permitir anular rendiciones ya finalizadas (datos contables consolidados)
+    if (ventaCerrada.estado === 'Finalizado') {
+      return res.status(400).json({
+        success: false,
+        message: 'No se puede anular una venta con rendición finalizada. Primero desagrúpela si necesita corregirla.'
+      });
+    }
+
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // Actualizar el estado de la descarga a pendiente
-      await queryRunner.manager.update(Descarga, ventaCerrada.proceso_id, {
-        estado_cuenta: 'pendiente',
-        monto_total: 0,
-        ganancia_repartidor: 0,
-        ganancia_empresa: 0,
-        porcentaje_repartidor: 0,
-        porcentaje_empresa: 0
+      // Soft delete: se anula el cierre sin tocar carga, descarga ni envases
+      await queryRunner.manager.update(VentaCerrada, ventaCerrada.id, {
+        deleted_at: new Date()
       });
 
-      // Eliminar la venta cerrada
-      await queryRunner.manager.remove(ventaCerrada);
+      // Desactivar movimiento contable asociado (si existe)
+      await queryRunner.manager
+        .createQueryBuilder()
+        .update('movimientos')
+        .set({ activo: false })
+        .where('tipo = :tipo', { tipo: 'CIERRE_VENTA' })
+        .andWhere('activo = :activo', { activo: true })
+        .andWhere("JSON_EXTRACT(detalles, '$.venta_cerrada_id') = :ventaId", {
+          ventaId: ventaCerrada.id
+        })
+        .execute();
 
       await queryRunner.commitTransaction();
 
       res.json({
         success: true,
-        message: 'Venta cerrada eliminada exitosamente'
+        message: 'Venta anulada correctamente. La carga y descarga asociadas se conservaron.'
       });
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -733,10 +755,10 @@ export const eliminarVentaCerrada = async (req: Request, res: Response) => {
       await queryRunner.release();
     }
   } catch (error) {
-    console.error('Error al eliminar venta cerrada:', error);
+    console.error('Error al anular venta cerrada:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Error al eliminar la venta cerrada',
+      message: 'Error al anular la venta cerrada',
       error: (error as Error).message
     });
   }

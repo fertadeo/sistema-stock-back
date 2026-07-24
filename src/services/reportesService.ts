@@ -146,6 +146,7 @@ export class ReportesService {
                 'repartidor.nombre',
             ])
             .where('vc.fecha_cierre BETWEEN :inicio AND :fin', { inicio, fin })
+            .andWhere('vc.deleted_at IS NULL')
             .getMany();
 
         const repartidores = await repartidorRepo.find({
