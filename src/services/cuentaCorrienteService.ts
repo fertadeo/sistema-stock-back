@@ -350,22 +350,19 @@ export class CuentaCorrienteService {
   }
 
   async obtenerResumenPorCliente(clienteId: number) {
-    const [cliente, ventas, cobros] = await Promise.all([
-      this.obtenerClienteBase(clienteId),
-      this.obtenerVentasConSaldo(clienteId),
-      this.obtenerCobros(clienteId)
-    ]);
+    // Secuencial: evita ocupar 3 conexiones del pool a la vez por request
+    const cliente = await this.obtenerClienteBase(clienteId);
+    const ventas = await this.obtenerVentasConSaldo(clienteId);
+    const cobros = await this.obtenerCobros(clienteId);
 
     const movimientos = this.construirMovimientos(ventas, cobros.reverse());
     return this.construirResumen(cliente, movimientos);
   }
 
   async obtenerCuentaCorrientePorCliente(clienteId: number, filtros: FiltroCuentaCorriente) {
-    const [cliente, ventas, cobros] = await Promise.all([
-      this.obtenerClienteBase(clienteId),
-      this.obtenerVentasConSaldo(clienteId),
-      this.obtenerCobros(clienteId)
-    ]);
+    const cliente = await this.obtenerClienteBase(clienteId);
+    const ventas = await this.obtenerVentasConSaldo(clienteId);
+    const cobros = await this.obtenerCobros(clienteId);
 
     const movimientosGlobales = this.construirMovimientos(ventas, [...cobros].reverse());
     const movimientosFiltrados = this.filtrarMovimientosPorFecha(movimientosGlobales, filtros);
@@ -414,8 +411,7 @@ export class CuentaCorrienteService {
   }
 
   async obtenerClientesDeudores(filtros: Paginacion & { search?: string }) {
-    const [clientes, ventasConSaldo, cobros] = await Promise.all([
-      clienteRepository.find({ relations: ['zona'] }),
+    const [ventasConSaldo, cobros] = await Promise.all([
       ventaRepository
         .createQueryBuilder('venta')
         .where('venta.cliente_id IS NOT NULL')
@@ -465,6 +461,19 @@ export class CuentaCorrienteService {
         ultimoMovimientoPorCliente.set(clienteId, fechaCobro);
       }
     }
+
+    const idsConMovimientos = Array.from(
+      new Set([...debitosPorCliente.keys(), ...creditosPorCliente.keys()])
+    );
+
+    const clientes =
+      idsConMovimientos.length === 0
+        ? []
+        : await clienteRepository
+            .createQueryBuilder('cliente')
+            .leftJoinAndSelect('cliente.zona', 'zona')
+            .where('cliente.id IN (:...ids)', { ids: idsConMovimientos })
+            .getMany();
 
     const termino = normalizarTexto(filtros.search).trim().toLowerCase();
 
@@ -527,6 +536,98 @@ export class CuentaCorrienteService {
         porPagina: filtros.limit,
         totalPaginas: Math.ceil(total / filtros.limit) || 1
       }
+    };
+  }
+
+  /**
+   * Resumen de fiados de un día en pocas queries (evita el N+1 del frontend
+   * que saturaba el pool MySQL con lotes concurrentes).
+   */
+  async obtenerResumenFiadosPorFecha(fecha: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw new Error('Parámetro de fecha inválido');
+    }
+
+    const desde = new Date(`${fecha}T00:00:00.000Z`);
+    const hasta = new Date(`${fecha}T23:59:59.999Z`);
+
+    const ventas = await ventaRepository
+      .createQueryBuilder('venta')
+      .where('venta.fecha_venta BETWEEN :desde AND :hasta', { desde, hasta })
+      .andWhere('venta.saldo = :saldo', { saldo: true })
+      .andWhere('venta.cliente_id IS NOT NULL')
+      .andWhere("venta.cliente_id <> ''")
+      .orderBy('venta.fecha_venta', 'DESC')
+      .getMany();
+
+    const ventasConSaldo = ventas.filter((venta) => {
+      const monto = Number(venta.saldo_monto || 0);
+      return !Number.isNaN(monto) && monto > 0;
+    });
+
+    const ventaIds = ventasConSaldo.map((venta) => venta.venta_id);
+    let cobros: Cobro[] = [];
+
+    if (ventaIds.length > 0) {
+      try {
+        cobros = await cobroRepository
+          .createQueryBuilder('cobro')
+          .where('cobro.venta_relacionada_id IN (:...ventaIds)', { ventaIds })
+          .getMany();
+      } catch (error) {
+        if (esErrorTablaFaltante(error, 'cobros')) {
+          cobros = [];
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    const cobrosPorVenta = new Map<string, Cobro>();
+    for (const cobro of cobros) {
+      if (!cobro.venta_relacionada_id) continue;
+      const existente = cobrosPorVenta.get(cobro.venta_relacionada_id);
+      if (!existente || new Date(cobro.fecha_cobro) > new Date(existente.fecha_cobro)) {
+        cobrosPorVenta.set(cobro.venta_relacionada_id, cobro);
+      }
+    }
+
+    const fiados = ventasConSaldo.map((venta) => {
+      const monto = redondearMonto(Number(venta.saldo_monto || 0));
+      const cobro = cobrosPorVenta.get(venta.venta_id);
+      const descripcionBase =
+        venta.forma_pago === 'parcial'
+          ? `Venta ${venta.tipo.toLowerCase()} con saldo pendiente`
+          : `Venta ${venta.tipo.toLowerCase()} fiada`;
+
+      return {
+        id: `venta-${venta.venta_id}`,
+        referenciaId: venta.venta_id,
+        clienteId: Number(venta.cliente_id) || 0,
+        clienteNombre: normalizarTexto(venta.nombre_cliente) || 'Cliente',
+        monto,
+        fecha: serializarFecha(venta.fecha_venta),
+        descripcion: descripcionBase,
+        cobrado: Boolean(cobro),
+        montoCobrado: cobro ? redondearMonto(Number(cobro.monto)) : 0,
+        fechaCobro: cobro ? serializarFecha(cobro.fecha_cobro) : null
+      };
+    });
+
+    const cobrados = fiados.filter((fiado) => fiado.cobrado);
+    const pendientes = fiados.filter((fiado) => !fiado.cobrado);
+
+    return {
+      fecha,
+      totalFiado: redondearMonto(fiados.reduce((total, fiado) => total + fiado.monto, 0)),
+      cantidadFiados: fiados.length,
+      cantidadCobrados: cobrados.length,
+      totalCobrado: redondearMonto(cobrados.reduce((total, fiado) => total + fiado.montoCobrado, 0)),
+      cantidadPendientes: pendientes.length,
+      totalPendiente: redondearMonto(pendientes.reduce((total, fiado) => total + fiado.monto, 0)),
+      porcentajeCobrados:
+        fiados.length > 0 ? Math.round((cobrados.length / fiados.length) * 100) : 0,
+      fiados
     };
   }
 }

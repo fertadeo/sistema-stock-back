@@ -21,7 +21,8 @@ import {
   getClientesDeudores,
   getCobrosPorCliente,
   getCuentaCorriente,
-  getCuentaCorrienteResumen
+  getCuentaCorrienteResumen,
+  getResumenFiadosPorFecha
 } from '../controllers/cuentaCorrienteController';
 import {
   createMovimientoEnvasesPorCliente,
@@ -34,6 +35,7 @@ const router = Router();
 // Rutas principales de clientes
 router.get('/', getClientes);
 router.get('/deudores', getClientesDeudores);
+router.get('/fiados-diario', getResumenFiadosPorFecha);
 router.get('/clientes-por-mes', getClientesPorMes);
 router.get('/getNextClienteId', getNextClienteId);
 router.get('/zonas', getZonas);

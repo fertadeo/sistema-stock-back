@@ -239,3 +239,24 @@ export const getClientesDeudores = async (req: AuthRequest, res: Response) => {
     responderError(res, error, 'Error al obtener los clientes deudores');
   }
 };
+
+export const getResumenFiadosPorFecha = async (req: AuthRequest, res: Response) => {
+  try {
+    const fechaRaw = Array.isArray(req.query.fecha) ? req.query.fecha[0] : req.query.fecha;
+    if (typeof fechaRaw !== 'string' || !fechaRaw.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'El parámetro fecha es requerido (YYYY-MM-DD)'
+      });
+    }
+
+    const resumen = await cuentaCorrienteService.obtenerResumenFiadosPorFecha(fechaRaw.trim());
+
+    res.json({
+      success: true,
+      data: resumen
+    });
+  } catch (error) {
+    responderError(res, error, 'Error al obtener el resumen de fiados por fecha');
+  }
+};

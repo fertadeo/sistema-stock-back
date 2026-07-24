@@ -75,8 +75,8 @@ const dbUser = resolveDbSetting('DB_USER', 'DB_USER_PROD', 'DB_USER_DEV', 'root'
 const dbPassword = resolveDbSetting('DB_PASSWORD', 'DB_PASSWORD_PROD', 'DB_PASSWORD_DEV');
 const dbName = resolveDbSetting('DB_NAME', 'DB_NAME_PROD', 'DB_NAME_DEV', 'soderia');
 // En hosting compartido el max_connections de MySQL suele ser bajo; un pool chico evita saturar.
-const parsedPoolSize = Number(process.env.DB_POOL_SIZE ?? 3);
-const dbPoolSize = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? Math.min(parsedPoolSize, 10) : 3;
+const parsedPoolSize = Number(process.env.DB_POOL_SIZE ?? 2);
+const dbPoolSize = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? Math.min(parsedPoolSize, 5) : 2;
 const dbConnectRetries = Math.max(1, Number(process.env.DB_CONNECT_RETRIES ?? 8));
 const dbConnectRetryMs = Math.max(500, Number(process.env.DB_CONNECT_RETRY_MS ?? 5000));
 
