@@ -77,6 +77,7 @@ app.get('/', (req, res) => {
 
 let alertasInterval: ReturnType<typeof setInterval> | null = null;
 let isShuttingDown = false;
+let alertasEnCurso = false;
 
 const shutdown = async (signal: string) => {
   if (isShuttingDown) {
@@ -115,8 +116,17 @@ initializeDatabase().then(() => {
   });
 
   alertasInterval = setInterval(() => {
-    void repartidorRutaService.procesarAlertasPendientes().catch((error) => {
-      console.error('[ruta-alertas] Error procesando alertas:', error);
-    });
+    if (alertasEnCurso || isShuttingDown) {
+      return;
+    }
+    alertasEnCurso = true;
+    void repartidorRutaService
+      .procesarAlertasPendientes()
+      .catch((error) => {
+        console.error('[ruta-alertas] Error procesando alertas:', error);
+      })
+      .finally(() => {
+        alertasEnCurso = false;
+      });
   }, 30_000);
 }).catch(error => console.log(error));

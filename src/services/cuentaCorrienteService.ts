@@ -83,13 +83,17 @@ const invalidarCacheDeudores = () => {
   deudoresCache.clear();
 };
 
-const isTooManyConnectionsError = (error: unknown): boolean => {
+const isPoolBusyError = (error: unknown): boolean => {
   if (!error || typeof error !== 'object') return false;
   const err = error as { code?: string; errno?: number; message?: string };
+  const msg = String(err.message ?? '').toLowerCase();
   return (
     err.code === 'ER_CON_COUNT_ERROR' ||
     err.errno === 1040 ||
-    String(err.message ?? '').toLowerCase().includes('too many connections')
+    msg.includes('too many connections') ||
+    msg.includes('queue limit reached') ||
+    msg.includes('acquire timeout') ||
+    msg.includes('connection acquisition timeout')
   );
 };
 
@@ -102,7 +106,7 @@ async function queryWithRetry<T = unknown>(sql: string, params: unknown[] = []):
       return (await AppDataSource.query(sql, params)) as T;
     } catch (error) {
       lastError = error;
-      if (!isTooManyConnectionsError(error) || attempt === 3) {
+      if (!isPoolBusyError(error) || attempt === 3) {
         throw error;
       }
       const waitMs = 400 * attempt;
@@ -356,11 +360,13 @@ export class CuentaCorrienteService {
 
     const cliente = await this.obtenerClienteBase(input.cliente_id);
 
-    const queryRunner = AppDataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+    let cobroGuardado: Cobro;
 
+    const queryRunner = AppDataSource.createQueryRunner();
     try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
       const cobro = queryRunner.manager.create(Cobro, {
         cliente_id: input.cliente_id,
         nombre_cliente: cliente.nombre,
@@ -371,40 +377,13 @@ export class CuentaCorrienteService {
         repartidor_id: input.repartidor_id ?? undefined
       });
 
-      const cobroGuardado = await queryRunner.manager.save(cobro);
+      cobroGuardado = await queryRunner.manager.save(cobro);
       await queryRunner.commitTransaction();
       invalidarCacheDeudores();
-
-      try {
-        await movimientoService.registrarCobroCliente(monto, cliente.nombre, {
-          cobro_id: cobroGuardado.id,
-          cliente_id: input.cliente_id,
-          medio_pago: input.medio_pago,
-          venta_relacionada_id: input.venta_relacionada_id,
-          repartidor_id: input.repartidor_id
-        });
-      } catch (error) {
-        console.error('Error al registrar movimiento de cobro de cliente:', error);
-      }
-
-      const resumen = await this.obtenerResumenPorCliente(input.cliente_id);
-
-      return {
-        cobro: {
-          id: cobroGuardado.id,
-          cliente_id: cobroGuardado.cliente_id,
-          nombre_cliente: cobroGuardado.nombre_cliente,
-          monto: redondearMonto(Number(cobroGuardado.monto)),
-          medio_pago: cobroGuardado.medio_pago,
-          observaciones: cobroGuardado.observaciones || null,
-          venta_relacionada_id: cobroGuardado.venta_relacionada_id || null,
-          repartidor_id: cobroGuardado.repartidor_id ?? null,
-          fecha_cobro: serializarFecha(cobroGuardado.fecha_cobro)
-        },
-        saldo_actual: resumen.saldo_actual
-      };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
 
       if (esErrorTablaFaltante(error, 'cobros')) {
         throw new Error(MENSAJE_TABLA_COBROS_FALTANTE);
@@ -414,6 +393,36 @@ export class CuentaCorrienteService {
     } finally {
       await queryRunner.release();
     }
+
+    // Post-tx: fuera del runner para no pedir otra conexión del pool mientras lo retiene.
+    try {
+      await movimientoService.registrarCobroCliente(monto, cliente.nombre, {
+        cobro_id: cobroGuardado!.id,
+        cliente_id: input.cliente_id,
+        medio_pago: input.medio_pago,
+        venta_relacionada_id: input.venta_relacionada_id,
+        repartidor_id: input.repartidor_id
+      });
+    } catch (error) {
+      console.error('Error al registrar movimiento de cobro de cliente:', error);
+    }
+
+    const resumen = await this.obtenerResumenPorCliente(input.cliente_id);
+
+    return {
+      cobro: {
+        id: cobroGuardado!.id,
+        cliente_id: cobroGuardado!.cliente_id,
+        nombre_cliente: cobroGuardado!.nombre_cliente,
+        monto: redondearMonto(Number(cobroGuardado!.monto)),
+        medio_pago: cobroGuardado!.medio_pago,
+        observaciones: cobroGuardado!.observaciones || null,
+        venta_relacionada_id: cobroGuardado!.venta_relacionada_id || null,
+        repartidor_id: cobroGuardado!.repartidor_id ?? null,
+        fecha_cobro: serializarFecha(cobroGuardado!.fecha_cobro)
+      },
+      saldo_actual: resumen.saldo_actual
+    };
   }
 
   async obtenerResumenPorCliente(clienteId: number) {
@@ -500,68 +509,51 @@ export class CuentaCorrienteService {
       params.push(like, like, like);
     }
 
-    // Una sola query agregada: evita cargar todas las ventas/cobros en memoria
-    // y no abre 2-3 conexiones en paralelo.
-    const sql = `
-      SELECT
-        c.id AS cliente_id,
-        c.nombre AS nombre,
-        c.telefono AS telefono,
-        c.direccion AS direccion,
-        c.estado AS estado,
-        c.zona AS zona,
-        c.repartidor AS repartidor,
-        c.dia_reparto AS dia_reparto,
-        COALESCE(d.total_debitos, 0) AS total_debitos,
-        COALESCE(cr.total_creditos, 0) AS total_creditos,
-        (COALESCE(d.total_debitos, 0) - COALESCE(cr.total_creditos, 0)) AS saldo_actual,
-        (COALESCE(d.cantidad, 0) + COALESCE(cr.cantidad, 0)) AS cantidad_movimientos,
-        CASE
-          WHEN d.ultimo_at IS NULL THEN cr.ultimo_at
-          WHEN cr.ultimo_at IS NULL THEN d.ultimo_at
-          WHEN d.ultimo_at >= cr.ultimo_at THEN d.ultimo_at
-          ELSE cr.ultimo_at
-        END AS ultimo_movimiento_at
-      FROM clientes c
-      LEFT JOIN (
-        SELECT
-          CAST(v.cliente_id AS UNSIGNED) AS cliente_id,
-          SUM(CAST(v.saldo_monto AS DECIMAL(12,2))) AS total_debitos,
-          COUNT(*) AS cantidad,
-          MAX(v.fecha_venta) AS ultimo_at
-        FROM venta v
-        WHERE v.saldo = 1
-          AND v.cliente_id IS NOT NULL
-          AND v.cliente_id <> ''
-          AND CAST(v.saldo_monto AS DECIMAL(12,2)) > 0
-        GROUP BY CAST(v.cliente_id AS UNSIGNED)
-      ) d ON d.cliente_id = c.id
-      LEFT JOIN (
-        SELECT
-          cob.cliente_id AS cliente_id,
-          SUM(cob.monto) AS total_creditos,
-          COUNT(*) AS cantidad,
-          MAX(cob.fecha_cobro) AS ultimo_at
-        FROM cobros cob
-        GROUP BY cob.cliente_id
-      ) cr ON cr.cliente_id = c.id
-      WHERE (COALESCE(d.total_debitos, 0) - COALESCE(cr.total_creditos, 0)) > 0
-        ${searchClause}
-      ORDER BY saldo_actual DESC, c.nombre ASC
-      LIMIT ? OFFSET ?
-    `;
+    // Una sola query agregada + LIMIT: evita cargar todo en memoria y
+    // no abre varias conexiones en paralelo (evita hang → Failed to fetch).
+    const buildSql = (incluirCobros: boolean) => {
+      const joinCobros = incluirCobros
+        ? `LEFT JOIN (
+            SELECT
+              cob.cliente_id AS cliente_id,
+              SUM(cob.monto) AS total_creditos,
+              COUNT(*) AS cantidad,
+              MAX(cob.fecha_cobro) AS ultimo_at
+            FROM cobros cob
+            GROUP BY cob.cliente_id
+          ) cr ON cr.cliente_id = c.id`
+        : '';
+      const totalCreditos = incluirCobros ? 'COALESCE(cr.total_creditos, 0)' : '0';
+      const cantidadCreditos = incluirCobros ? 'COALESCE(cr.cantidad, 0)' : '0';
+      const ultimoCredito = incluirCobros ? 'cr.ultimo_at' : 'NULL';
 
-    params.push(limit, offset);
-
-    const countSql = `
-      SELECT COUNT(*) AS total
-      FROM (
-        SELECT c.id
+      return `
+        SELECT
+          c.id AS cliente_id,
+          c.nombre AS nombre,
+          c.telefono AS telefono,
+          c.direccion AS direccion,
+          c.estado AS estado,
+          c.zona AS zona,
+          c.repartidor AS repartidor,
+          c.dia_reparto AS dia_reparto,
+          COALESCE(d.total_debitos, 0) AS total_debitos,
+          ${totalCreditos} AS total_creditos,
+          (COALESCE(d.total_debitos, 0) - ${totalCreditos}) AS saldo_actual,
+          (COALESCE(d.cantidad, 0) + ${cantidadCreditos}) AS cantidad_movimientos,
+          CASE
+            WHEN d.ultimo_at IS NULL THEN ${ultimoCredito}
+            WHEN ${ultimoCredito} IS NULL THEN d.ultimo_at
+            WHEN d.ultimo_at >= ${ultimoCredito} THEN d.ultimo_at
+            ELSE ${ultimoCredito}
+          END AS ultimo_movimiento_at
         FROM clientes c
         LEFT JOIN (
           SELECT
             CAST(v.cliente_id AS UNSIGNED) AS cliente_id,
-            SUM(CAST(v.saldo_monto AS DECIMAL(12,2))) AS total_debitos
+            SUM(CAST(v.saldo_monto AS DECIMAL(12,2))) AS total_debitos,
+            COUNT(*) AS cantidad,
+            MAX(v.fecha_venta) AS ultimo_at
           FROM venta v
           WHERE v.saldo = 1
             AND v.cliente_id IS NOT NULL
@@ -569,31 +561,73 @@ export class CuentaCorrienteService {
             AND CAST(v.saldo_monto AS DECIMAL(12,2)) > 0
           GROUP BY CAST(v.cliente_id AS UNSIGNED)
         ) d ON d.cliente_id = c.id
-        LEFT JOIN (
-          SELECT
-            cob.cliente_id AS cliente_id,
-            SUM(cob.monto) AS total_creditos
-          FROM cobros cob
-          GROUP BY cob.cliente_id
-        ) cr ON cr.cliente_id = c.id
-        WHERE (COALESCE(d.total_debitos, 0) - COALESCE(cr.total_creditos, 0)) > 0
+        ${joinCobros}
+        WHERE (COALESCE(d.total_debitos, 0) - ${totalCreditos}) > 0
           ${searchClause}
-      ) t
-    `;
+        ORDER BY saldo_actual DESC, c.nombre ASC
+        LIMIT ? OFFSET ?
+      `;
+    };
 
+    const buildCountSql = (incluirCobros: boolean) => {
+      const joinCobros = incluirCobros
+        ? `LEFT JOIN (
+            SELECT
+              cob.cliente_id AS cliente_id,
+              SUM(cob.monto) AS total_creditos
+            FROM cobros cob
+            GROUP BY cob.cliente_id
+          ) cr ON cr.cliente_id = c.id`
+        : '';
+      const totalCreditos = incluirCobros ? 'COALESCE(cr.total_creditos, 0)' : '0';
+
+      return `
+        SELECT COUNT(*) AS total
+        FROM (
+          SELECT c.id
+          FROM clientes c
+          LEFT JOIN (
+            SELECT
+              CAST(v.cliente_id AS UNSIGNED) AS cliente_id,
+              SUM(CAST(v.saldo_monto AS DECIMAL(12,2))) AS total_debitos
+            FROM venta v
+            WHERE v.saldo = 1
+              AND v.cliente_id IS NOT NULL
+              AND v.cliente_id <> ''
+              AND CAST(v.saldo_monto AS DECIMAL(12,2)) > 0
+            GROUP BY CAST(v.cliente_id AS UNSIGNED)
+          ) d ON d.cliente_id = c.id
+          ${joinCobros}
+          WHERE (COALESCE(d.total_debitos, 0) - ${totalCreditos}) > 0
+            ${searchClause}
+        ) t
+      `;
+    };
+
+    const queryParams = [...params, limit, offset];
     const countParams = termino
       ? [`%${termino}%`, `%${termino}%`, `%${termino}%`]
       : [];
 
-    const rows = await queryWithRetry<Array<Record<string, unknown>>>(sql, params);
+    let rows: Array<Record<string, unknown>>;
+    let incluirCobros = true;
+    try {
+      rows = await queryWithRetry(buildSql(true), queryParams);
+    } catch (error) {
+      if (!esErrorTablaFaltante(error, 'cobros')) {
+        throw error;
+      }
+      console.warn(`[CuentaCorrienteService] ${MENSAJE_TABLA_COBROS_FALTANTE}`);
+      incluirCobros = false;
+      rows = await queryWithRetry(buildSql(false), queryParams);
+    }
 
-    // Evita segunda query si la primera página no está completa.
     let total = 0;
     if (page === 1 && rows.length < limit) {
       total = rows.length;
     } else {
       const countRows = await queryWithRetry<Array<{ total: number | string }>>(
-        countSql,
+        buildCountSql(incluirCobros),
         countParams
       );
       total = Number(countRows[0]?.total ?? 0);

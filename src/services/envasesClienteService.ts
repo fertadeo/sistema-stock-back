@@ -152,10 +152,12 @@ export class EnvasesClienteService {
     }
 
     const queryRunner = AppDataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+    let movimientosCreados: Array<{ id: number; tipo: TipoMovimientoEnvase; cantidad: number }> = [];
 
     try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
       const cliente = await queryRunner.manager.findOne(Clientes, {
         where: { id: input.cliente_id }
       });
@@ -163,8 +165,6 @@ export class EnvasesClienteService {
       if (!cliente) {
         throw new Error('Cliente no encontrado');
       }
-
-      const movimientosCreados: Array<{ id: number; tipo: TipoMovimientoEnvase; cantidad: number }> = [];
 
       for (const item of input.items) {
         const cantidad = Number(item.cantidad);
@@ -248,20 +248,23 @@ export class EnvasesClienteService {
       }
 
       await queryRunner.commitTransaction();
-
-      const resumen = await this.obtenerResumenPorCliente(input.cliente_id);
-
-      return {
-        saldo_actual: resumen.saldo_actual,
-        cantidad_total: resumen.cantidad_total,
-        ultimo_movimiento_at: resumen.ultimo_movimiento_at,
-        movimientos_creados: movimientosCreados
-      };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
       throw error;
     } finally {
       await queryRunner.release();
     }
+
+    // Resumen DESPUÉS de liberar el runner (evita deadlock de pool).
+    const resumen = await this.obtenerResumenPorCliente(input.cliente_id);
+
+    return {
+      saldo_actual: resumen.saldo_actual,
+      cantidad_total: resumen.cantidad_total,
+      ultimo_movimiento_at: resumen.ultimo_movimiento_at,
+      movimientos_creados: movimientosCreados
+    };
   }
 }

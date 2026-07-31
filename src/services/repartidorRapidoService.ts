@@ -74,23 +74,28 @@ export class RepartidorRapidoService {
         }>;
         observaciones?: string;
     }) {
-        const queryRunner = AppDataSource.createQueryRunner();
-        await queryRunner.connect();
-        await queryRunner.startTransaction();
+        let ventaGuardada: Venta;
+        let cliente: Clientes;
 
+        const queryRunner = AppDataSource.createQueryRunner();
         try {
+            await queryRunner.connect();
+            await queryRunner.startTransaction();
+
             // Verificar que el cliente existe y está activo
-            const cliente = await queryRunner.manager.findOne(Clientes, {
+            const clienteTx = await queryRunner.manager.findOne(Clientes, {
                 where: { id: data.cliente_id }
             });
 
-            if (!cliente) {
+            if (!clienteTx) {
                 throw new Error('Cliente no encontrado');
             }
 
-            if (!cliente.estado) {
+            if (!clienteTx.estado) {
                 throw new Error('El cliente está desactivado');
             }
+
+            cliente = clienteTx;
 
             // Crear la venta dentro de la transacción
             const ventaData: Partial<Venta> = {
@@ -114,7 +119,7 @@ export class RepartidorRapidoService {
             };
 
             const venta = queryRunner.manager.create(Venta, ventaData);
-            const ventaGuardada = await queryRunner.manager.save(venta);
+            ventaGuardada = await queryRunner.manager.save(venta);
 
             // Registrar movimientos de envases si existen
             if (data.envases_prestados && data.envases_prestados.length > 0) {
@@ -140,36 +145,10 @@ export class RepartidorRapidoService {
             }
 
             await queryRunner.commitTransaction();
-
-            // Registrar movimiento en el sistema de auditoría (fuera de la transacción principal)
-            // para evitar problemas con el servicio de eventos
-            try {
-                await this.movimientoService.registrarMovimiento({
-                    tipo: 'VENTA_LOCAL' as any, // Usar tipo existente
-                    descripcion: `Venta rápida a ${cliente.nombre} por $${data.monto_total}`,
-                    monto: data.monto_total,
-                    detalles: {
-                        venta_id: ventaGuardada.venta_id,
-                        cliente_id: data.cliente_id,
-                        repartidor_id: data.repartidor_id,
-                        productos: data.productos,
-                        medio_pago: data.medio_pago,
-                        forma_pago: data.forma_pago
-                    }
-                });
-            } catch (error) {
-                console.error('Error al registrar movimiento de auditoría:', error);
-                // No lanzamos el error para no afectar la venta ya guardada
-            }
-
-            return {
-                venta: ventaGuardada,
-                cliente,
-                envases_prestados: data.envases_prestados || [],
-                envases_devueltos: data.envases_devueltos || []
-            };
         } catch (error) {
-            await queryRunner.rollbackTransaction();
+            if (queryRunner.isTransactionActive) {
+                await queryRunner.rollbackTransaction();
+            }
 
             if (esErrorTablaFaltante(error, 'cobros')) {
                 throw new Error(MENSAJE_TABLA_COBROS_FALTANTE);
@@ -179,6 +158,32 @@ export class RepartidorRapidoService {
         } finally {
             await queryRunner.release();
         }
+
+        // Auditoría DESPUÉS de liberar el runner (evita deadlock de pool).
+        try {
+            await this.movimientoService.registrarMovimiento({
+                tipo: 'VENTA_LOCAL' as any,
+                descripcion: `Venta rápida a ${cliente!.nombre} por $${data.monto_total}`,
+                monto: data.monto_total,
+                detalles: {
+                    venta_id: ventaGuardada!.venta_id,
+                    cliente_id: data.cliente_id,
+                    repartidor_id: data.repartidor_id,
+                    productos: data.productos,
+                    medio_pago: data.medio_pago,
+                    forma_pago: data.forma_pago
+                }
+            });
+        } catch (error) {
+            console.error('Error al registrar movimiento de auditoría:', error);
+        }
+
+        return {
+            venta: ventaGuardada!,
+            cliente: cliente!,
+            envases_prestados: data.envases_prestados || [],
+            envases_devueltos: data.envases_devueltos || []
+        };
     }
 
     /**
@@ -192,11 +197,14 @@ export class RepartidorRapidoService {
         observaciones?: string;
         venta_relacionada_id?: string;
     }) {
-        const queryRunner = AppDataSource.createQueryRunner();
-        await queryRunner.connect();
-        await queryRunner.startTransaction();
+        let cobroGuardado: Cobro;
+        let nombreCliente: string;
 
+        const queryRunner = AppDataSource.createQueryRunner();
         try {
+            await queryRunner.connect();
+            await queryRunner.startTransaction();
+
             // Verificar que el cliente existe
             const cliente = await queryRunner.manager.findOne(Clientes, {
                 where: { id: data.cliente_id }
@@ -205,6 +213,8 @@ export class RepartidorRapidoService {
             if (!cliente) {
                 throw new Error('Cliente no encontrado');
             }
+
+            nombreCliente = cliente.nombre;
 
             // Crear el cobro
             const cobro = queryRunner.manager.create(Cobro, {
@@ -217,30 +227,35 @@ export class RepartidorRapidoService {
                 venta_relacionada_id: data.venta_relacionada_id
             });
 
-            const cobroGuardado = await queryRunner.manager.save(cobro);
+            cobroGuardado = await queryRunner.manager.save(cobro);
+            await queryRunner.commitTransaction();
+        } catch (error) {
+            if (queryRunner.isTransactionActive) {
+                await queryRunner.rollbackTransaction();
+            }
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
 
-            // Registrar cobros con un tipo propio para no mezclarlos con ventas en métricas.
+        // Auditoría DESPUÉS de liberar el runner (evita deadlock de pool).
+        try {
             await this.movimientoService.registrarCobroCliente(
                 data.monto,
-                cliente.nombre,
+                nombreCliente!,
                 {
-                    cobro_id: cobroGuardado.id,
+                    cobro_id: cobroGuardado!.id,
                     cliente_id: data.cliente_id,
                     repartidor_id: data.repartidor_id,
                     medio_pago: data.medio_pago,
                     venta_relacionada_id: data.venta_relacionada_id
                 }
             );
-
-            await queryRunner.commitTransaction();
-
-            return cobroGuardado;
         } catch (error) {
-            await queryRunner.rollbackTransaction();
-            throw error;
-        } finally {
-            await queryRunner.release();
+            console.error('Error al registrar movimiento de cobro rápido:', error);
         }
+
+        return cobroGuardado!;
     }
 
     /**

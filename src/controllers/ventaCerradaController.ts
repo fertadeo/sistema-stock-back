@@ -79,12 +79,14 @@ export const createVentaCerrada = async (req: Request, res: Response) => {
 
     // Iniciar transacción
     const queryRunner = AppDataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+    let ventaCerradaGuardada: VentaCerrada;
 
     try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
       // Crear la venta cerrada
-      const ventaCerrada = ventaCerradaRepository.create({
+      const ventaCerrada = queryRunner.manager.create(VentaCerrada, {
         proceso_id,
         total_venta,
         comision_porcentaje: comision_porcentaje || 0,
@@ -98,19 +100,30 @@ export const createVentaCerrada = async (req: Request, res: Response) => {
       });
 
       // Guardar la venta cerrada
-      const ventaCerradaGuardada = await queryRunner.manager.save(ventaCerrada);
+      ventaCerradaGuardada = await queryRunner.manager.save(ventaCerrada);
 
       // Actualizar el estado de la descarga
       await queryRunner.manager.update(Descarga, proceso_id, {
         estado_cuenta: 'finalizado'
       });
 
-      // Registrar el movimiento
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+
+    // Auditoría y lectura DESPUÉS de liberar el runner (evita deadlock de pool).
+    try {
       await movimientoService.registrarVentaRepartidor(
         total_venta,
         descarga.carga.items.map(item => item.producto.nombreProducto),
         {
-          venta_cerrada_id: ventaCerradaGuardada.id,
+          venta_cerrada_id: ventaCerradaGuardada!.id,
           repartidor_id: repartidor_id,
           monto_efectivo: monto_efectivo || 0,
           monto_transferencia: monto_transferencia || 0,
@@ -120,47 +133,37 @@ export const createVentaCerrada = async (req: Request, res: Response) => {
           ganancia_fabrica
         }
       );
-
-      // Confirmar la transacción
-      await queryRunner.commitTransaction();
-
-      // Obtener la venta cerrada con la relación al repartidor
-      const ventaCerradaConRelaciones = await ventaCerradaRepository.findOne({
-        where: { id: ventaCerradaGuardada.id },
-        relations: ['repartidor']
-      });
-
-      // Formatear la respuesta
-      const respuesta = {
-        success: true,
-        venta_cerrada: {
-          id: ventaCerradaConRelaciones?.id,
-          proceso_id: ventaCerradaConRelaciones?.proceso_id,
-          fecha_cierre: ventaCerradaConRelaciones?.fecha_cierre,
-          total_venta: ventaCerradaConRelaciones?.total_venta,
-          comision_porcentaje: ventaCerradaConRelaciones?.comision_porcentaje,
-          ganancia_repartidor: ventaCerradaConRelaciones?.ganancia_repartidor,
-          ganancia_fabrica: ventaCerradaConRelaciones?.ganancia_fabrica,
-          monto_efectivo: ventaCerradaConRelaciones?.monto_efectivo,
-          monto_transferencia: ventaCerradaConRelaciones?.monto_transferencia,
-          balance_fiado: ventaCerradaConRelaciones?.balance_fiado,
-          repartidor: ventaCerradaConRelaciones?.repartidor ? {
-            id: ventaCerradaConRelaciones.repartidor.id,
-            nombre: ventaCerradaConRelaciones.repartidor.nombre
-          } : null,
-          observaciones: ventaCerradaConRelaciones?.observaciones
-        }
-      };
-
-      res.status(201).json(respuesta);
     } catch (error) {
-      // Si hay un error, revertir la transacción
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      // Liberar el queryRunner
-      await queryRunner.release();
+      console.error('Error al registrar movimiento de venta cerrada:', error);
     }
+
+    const ventaCerradaConRelaciones = await ventaCerradaRepository.findOne({
+      where: { id: ventaCerradaGuardada!.id },
+      relations: ['repartidor']
+    });
+
+    const respuesta = {
+      success: true,
+      venta_cerrada: {
+        id: ventaCerradaConRelaciones?.id,
+        proceso_id: ventaCerradaConRelaciones?.proceso_id,
+        fecha_cierre: ventaCerradaConRelaciones?.fecha_cierre,
+        total_venta: ventaCerradaConRelaciones?.total_venta,
+        comision_porcentaje: ventaCerradaConRelaciones?.comision_porcentaje,
+        ganancia_repartidor: ventaCerradaConRelaciones?.ganancia_repartidor,
+        ganancia_fabrica: ventaCerradaConRelaciones?.ganancia_fabrica,
+        monto_efectivo: ventaCerradaConRelaciones?.monto_efectivo,
+        monto_transferencia: ventaCerradaConRelaciones?.monto_transferencia,
+        balance_fiado: ventaCerradaConRelaciones?.balance_fiado,
+        repartidor: ventaCerradaConRelaciones?.repartidor ? {
+          id: ventaCerradaConRelaciones.repartidor.id,
+          nombre: ventaCerradaConRelaciones.repartidor.nombre
+        } : null,
+        observaciones: ventaCerradaConRelaciones?.observaciones
+      }
+    };
+
+    res.status(201).json(respuesta);
   } catch (error) {
     console.error('Error al crear venta cerrada:', error);
     res.status(500).json({ 

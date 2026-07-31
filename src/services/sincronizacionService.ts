@@ -225,10 +225,12 @@ export class SincronizacionService {
         }
 
         const queryRunner = AppDataSource.createQueryRunner();
-        await queryRunner.connect();
-        await queryRunner.startTransaction();
+        let clienteGuardado: Clientes;
 
         try {
+            await queryRunner.connect();
+            await queryRunner.startTransaction();
+
             if (datos.dni) {
                 const clienteExistente = await queryRunner.manager.findOne(Clientes, {
                     where: { dni: datos.dni }
@@ -268,7 +270,7 @@ export class SincronizacionService {
                 dia_reparto: datos.dia_reparto || ''
             });
 
-            const clienteGuardado = await queryRunner.manager.save(cliente);
+            clienteGuardado = await queryRunner.manager.save(cliente);
 
             if (datos.envases_prestados?.length) {
                 for (const envase of datos.envases_prestados) {
@@ -310,25 +312,27 @@ export class SincronizacionService {
             }
 
             await queryRunner.commitTransaction();
-
-            try {
-                await this.movimientoService.registrarNuevoCliente(clienteGuardado.nombre, {
-                    cliente_id: clienteGuardado.id,
-                    direccion: clienteGuardado.direccion,
-                    telefono: clienteGuardado.telefono,
-                    origen: 'sincronizacion_offline'
-                });
-            } catch (error) {
-                console.error('Error al registrar movimiento de nuevo cliente offline:', error);
-            }
-
-            return clienteGuardado;
         } catch (error) {
-            await queryRunner.rollbackTransaction();
+            if (queryRunner.isTransactionActive) {
+                await queryRunner.rollbackTransaction();
+            }
             throw error;
         } finally {
             await queryRunner.release();
         }
+
+        try {
+            await this.movimientoService.registrarNuevoCliente(clienteGuardado!.nombre, {
+                cliente_id: clienteGuardado!.id,
+                direccion: clienteGuardado!.direccion,
+                telefono: clienteGuardado!.telefono,
+                origen: 'sincronizacion_offline'
+            });
+        } catch (error) {
+            console.error('Error al registrar movimiento de nuevo cliente offline:', error);
+        }
+
+        return clienteGuardado!;
     }
 
     /**
@@ -343,10 +347,11 @@ export class SincronizacionService {
         observaciones?: string;
     }) {
         const queryRunner = AppDataSource.createQueryRunner();
-        await queryRunner.connect();
-        await queryRunner.startTransaction();
 
         try {
+            await queryRunner.connect();
+            await queryRunner.startTransaction();
+
             const { Productos } = await import('../entities/Productos');
             const producto = await queryRunner.manager.findOne(Productos, {
                 where: { id: datos.producto_id }
@@ -413,7 +418,9 @@ export class SincronizacionService {
             await queryRunner.commitTransaction();
             return resultado;
         } catch (error) {
-            await queryRunner.rollbackTransaction();
+            if (queryRunner.isTransactionActive) {
+                await queryRunner.rollbackTransaction();
+            }
             throw error;
         } finally {
             await queryRunner.release();

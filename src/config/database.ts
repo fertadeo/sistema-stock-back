@@ -74,9 +74,9 @@ const dbHost = resolveDbSetting('DB_HOST', 'DB_HOST_PROD', 'DB_HOST_DEV', 'local
 const dbUser = resolveDbSetting('DB_USER', 'DB_USER_PROD', 'DB_USER_DEV', 'root');
 const dbPassword = resolveDbSetting('DB_PASSWORD', 'DB_PASSWORD_PROD', 'DB_PASSWORD_DEV');
 const dbName = resolveDbSetting('DB_NAME', 'DB_NAME_PROD', 'DB_NAME_DEV', 'soderia');
-// Hosting compartido: 1 conexión por proceso. Varias apps PM2 + pool alto saturan max_connections.
-const parsedPoolSize = Number(process.env.DB_POOL_SIZE ?? 1);
-const dbPoolSize = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? Math.min(parsedPoolSize, 2) : 1;
+// Tras corregir deadlocks de QueryRunner: 2 conexiones alcanza para tx + request concurrente.
+const parsedPoolSize = Number(process.env.DB_POOL_SIZE ?? 2);
+const dbPoolSize = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? Math.min(parsedPoolSize, 3) : 2;
 const dbConnectRetries = Math.max(1, Number(process.env.DB_CONNECT_RETRIES ?? 8));
 const dbConnectRetryMs = Math.max(500, Number(process.env.DB_CONNECT_RETRY_MS ?? 5000));
 
@@ -111,6 +111,8 @@ export const AppDataSource = new DataSource({
     waitForConnections: true,
     // Cola corta: mejor fallar rápido que acumular requests abiertas.
     queueLimit: 20,
+    // Si el pool está trabado, fallar en 8s (evita "Failed to fetch" por hang eterno).
+    acquireTimeout: 8_000,
     // Liberar ya: no retener idle en un VPS con max_connections bajo.
     idleTimeout: 5_000,
     maxIdle: 0,

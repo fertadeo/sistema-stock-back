@@ -107,17 +107,21 @@ const responderError = (res: Response, error: unknown, mensajePorDefecto: string
   }
 
   const err = error as { code?: string; errno?: number; message?: string };
-  const tooManyConnections =
+  const msg = String(err?.message ?? '').toLowerCase();
+  const saturado =
     err?.code === 'ER_CON_COUNT_ERROR' ||
     err?.errno === 1040 ||
-    String(err?.message ?? '').toLowerCase().includes('too many connections');
+    msg.includes('too many connections') ||
+    msg.includes('queue limit reached') ||
+    msg.includes('acquire timeout') ||
+    msg.includes('connection acquisition timeout');
 
-  if (tooManyConnections) {
-    console.error(`[CuentaCorrienteController] ${mensajePorDefecto}: MySQL sin conexiones libres`);
+  if (saturado) {
+    console.error(`[CuentaCorrienteController] ${mensajePorDefecto}: MySQL/pool saturado`);
     return res.status(503).json({
       success: false,
       message: 'Base de datos saturada. Reintentá en unos segundos.',
-      error: 'Too many connections'
+      error: 'Database busy'
     });
   }
 
