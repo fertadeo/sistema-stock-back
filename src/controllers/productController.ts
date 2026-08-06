@@ -1,8 +1,15 @@
 import { Request, Response } from 'express';
-import { Productos } from '../entities/Productos';
+import { Productos, TipoProducto } from '../entities/Productos';
 import { AppDataSource } from '../config/database'; // Configura tu datasource de TypeORM
 
+const TIPOS_VALIDOS = new Set<string>(Object.values(TipoProducto));
 
+function parseTipoProducto(valor: unknown, fallback: TipoProducto = TipoProducto.VENTA_PUBLICO): TipoProducto {
+  if (typeof valor === 'string' && TIPOS_VALIDOS.has(valor)) {
+    return valor as TipoProducto;
+  }
+  return fallback;
+}
 
 // Controlador para importar productos (sin modificaciones)
 export const importarProductos = async (req: Request, res: Response) => {
@@ -20,9 +27,7 @@ export const importarProductos = async (req: Request, res: Response) => {
       nuevoProducto.nombreProducto = producto.Producto;
       nuevoProducto.precioPublico = producto.PrecioPublico;
       nuevoProducto.precioRevendedor = producto.PrecioRevendedor;
-
-
-
+      nuevoProducto.tipoProducto = parseTipoProducto(producto.tipoProducto ?? producto.TipoProducto);
 
       console.log('Guardando producto:', nuevoProducto);
 
@@ -44,7 +49,13 @@ const productoRepository = AppDataSource.getRepository(Productos);
 // Función para obtener todos los productos
 export const obtenerTodosLosProductos = async (req: Request, res: Response) => {
   try {
-    const productos = await productoRepository.find();
+    const tipoQuery = typeof req.query.tipo === 'string' ? req.query.tipo : undefined;
+    const where =
+      tipoQuery && TIPOS_VALIDOS.has(tipoQuery)
+        ? { tipoProducto: tipoQuery as TipoProducto }
+        : undefined;
+
+    const productos = await productoRepository.find(where ? { where } : undefined);
     res.json(productos);
   } catch (error) {
     console.error('Error al obtener todos los productos:', error);
@@ -74,6 +85,7 @@ export const obtenerProductoPorId = async (req: Request, res: Response) => {
       nombreProducto: producto.nombreProducto,
       precioPublico: producto.precioPublico,
       precioRevendedor: producto.precioRevendedor,
+      tipoProducto: producto.tipoProducto,
     };
 
 
@@ -123,11 +135,15 @@ export const obtenerUltimoIdProducto = async (req: Request, res: Response) => {
 // Función para actualizar un producto existente
 export const actualizarProducto = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { nombreProducto, cantidadStock, precioPublico, precioRevendedor, descripcion } = req.body;
+  const { nombreProducto, cantidadStock, precioPublico, precioRevendedor, descripcion, tipoProducto } = req.body;
 
   const productId = Number(id);
   if (isNaN(productId) || productId <= 0) {
     return res.status(400).json({ message: 'ID de producto inválido' });
+  }
+
+  if (tipoProducto !== undefined && !TIPOS_VALIDOS.has(tipoProducto)) {
+    return res.status(400).json({ message: 'Tipo de producto inválido' });
   }
 
   try {
@@ -143,6 +159,7 @@ export const actualizarProducto = async (req: Request, res: Response) => {
     if (precioPublico !== undefined) producto.precioPublico = precioPublico;
     if (precioRevendedor !== undefined) producto.precioRevendedor = precioRevendedor;
     if (descripcion !== undefined) producto.descripcion = descripcion;
+    if (tipoProducto !== undefined) producto.tipoProducto = parseTipoProducto(tipoProducto, producto.tipoProducto);
 
     await productoRepository.save(producto);
 
@@ -206,12 +223,17 @@ export const crearProducto = async (req: Request, res: Response) => {
     precioRevendedor,
     cantidadStock,
     descripcion,
+    tipoProducto,
   } = req.body;
 
   console.log('[crearProducto] Payload recibido:', req.body);
 
   if (!nombreProducto || String(nombreProducto).trim() === '') {
     return res.status(400).json({ message: 'El nombre del producto es obligatorio' });
+  }
+
+  if (tipoProducto !== undefined && !TIPOS_VALIDOS.has(tipoProducto)) {
+    return res.status(400).json({ message: 'Tipo de producto inválido' });
   }
 
   const precioPublicoNumero = Number(precioPublico);
@@ -237,6 +259,7 @@ export const crearProducto = async (req: Request, res: Response) => {
       precioRevendedor: precioRevendedorNumero,
       cantidadStock: cantidadStockNumero,
       descripcion: descripcion != null ? String(descripcion).trim() : '',
+      tipoProducto: parseTipoProducto(tipoProducto),
     });
 
     const productoGuardado = await productoRepository.save(nuevoProducto);

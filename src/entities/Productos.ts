@@ -1,5 +1,9 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
 
+export enum TipoProducto {
+  VENTA_PUBLICO = 'venta_publico',
+  INSUMO = 'insumo',
+}
 
 @Entity()
 export class Productos { 
@@ -8,7 +12,6 @@ export class Productos {
 
   @Column()
   nombreProducto!: string;
-
 
   @Column()
   precioPublico!: number;
@@ -21,4 +24,11 @@ export class Productos {
 
   @Column()
   descripcion!: string;
+
+  @Column({
+    type: 'enum',
+    enum: TipoProducto,
+    default: TipoProducto.VENTA_PUBLICO,
+  })
+  tipoProducto!: TipoProducto;
 }
