@@ -304,6 +304,32 @@ async function migrarRepartidorRuta(dataSource: DataSource): Promise<void> {
   }
 }
 
+async function migrarZonasRadio(dataSource: DataSource): Promise<void> {
+  if (await tablaExiste(dataSource, 'zonas_radio')) {
+    console.log('[migrations] zonas_radio ya existe.');
+    return;
+  }
+
+  console.log('[migrations] Creando tabla zonas_radio...');
+  await dataSource.query(`
+    CREATE TABLE \`zonas_radio\` (
+      \`id\` INT NOT NULL AUTO_INCREMENT,
+      \`nombre\` VARCHAR(120) NOT NULL,
+      \`latitud\` DECIMAL(10, 8) NOT NULL,
+      \`longitud\` DECIMAL(11, 8) NOT NULL,
+      \`radio_metros\` INT NOT NULL,
+      \`color\` VARCHAR(20) NOT NULL DEFAULT '#0d9488',
+      \`repartidor\` VARCHAR(100) NULL DEFAULT NULL,
+      \`activo\` TINYINT(1) NOT NULL DEFAULT 1,
+      \`creado_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`actualizado_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`idx_zonas_radio_activo\` (\`activo\`),
+      KEY \`idx_zonas_radio_repartidor\` (\`repartidor\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+}
+
 async function migrarConfiguracionSistema(dataSource: DataSource): Promise<void> {
   if (!(await tablaExiste(dataSource, 'configuracion_sistema'))) {
     console.log('[migrations] Creando tabla configuracion_sistema...');
@@ -343,6 +369,7 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
   await migrarRepartidorRuta(dataSource);
   await migrarRepartidorAxelAFernando(dataSource);
   await migrarConfiguracionSistema(dataSource);
+  await migrarZonasRadio(dataSource);
 
   console.log('[migrations] Esquema verificado correctamente.');
 }
