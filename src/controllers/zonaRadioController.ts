@@ -12,7 +12,7 @@ export class ZonaRadioController {
       res.json(zonas);
     } catch (error) {
       res.status(500).json({
-        message: 'Error al obtener zonas de radio',
+        message: 'Error al obtener zonas',
         error: error instanceof Error ? error.message : 'Error desconocido',
       });
     }
@@ -35,16 +35,38 @@ export class ZonaRadioController {
     }
   };
 
+  limitesBarrio = async (req: Request, res: Response) => {
+    try {
+      const barrio = String(req.body?.barrio ?? req.query?.barrio ?? '').trim();
+      const resultado = await this.service.limitesBarrio(barrio);
+      res.json(resultado);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      const status =
+        message.includes('obligatorio') || message.includes('No se pudieron')
+          ? 400
+          : 500;
+      res.status(status).json({
+        message: 'Error al obtener límites del barrio',
+        error: message,
+      });
+    }
+  };
+
   crear = async (req: Request, res: Response) => {
     try {
       const zona = await this.service.crear(req.body);
       res.status(201).json(zona);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error desconocido';
-      const status = message.includes('obligatorio') || message.includes('inválid') || message.includes('radio')
-        ? 400
-        : 500;
-      res.status(status).json({ message: 'Error al crear zona de radio', error: message });
+      const status =
+        message.includes('obligatorio') ||
+        message.includes('inválid') ||
+        message.includes('radio') ||
+        message.includes('polígono')
+          ? 400
+          : 500;
+      res.status(status).json({ message: 'Error al crear zona', error: message });
     }
   };
 
@@ -62,10 +84,13 @@ export class ZonaRadioController {
       const status =
         message === 'Zona no encontrada'
           ? 404
-          : message.includes('obligatorio') || message.includes('inválid') || message.includes('radio')
+          : message.includes('obligatorio') ||
+              message.includes('inválid') ||
+              message.includes('radio') ||
+              message.includes('polígono')
             ? 400
             : 500;
-      res.status(status).json({ message: 'Error al actualizar zona de radio', error: message });
+      res.status(status).json({ message: 'Error al actualizar zona', error: message });
     }
   };
 
@@ -81,7 +106,7 @@ export class ZonaRadioController {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error desconocido';
       res.status(message === 'Zona no encontrada' ? 404 : 500).json({
-        message: 'Error al eliminar zona de radio',
+        message: 'Error al eliminar zona',
         error: message,
       });
     }

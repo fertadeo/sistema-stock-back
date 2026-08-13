@@ -305,29 +305,71 @@ async function migrarRepartidorRuta(dataSource: DataSource): Promise<void> {
 }
 
 async function migrarZonasRadio(dataSource: DataSource): Promise<void> {
-  if (await tablaExiste(dataSource, 'zonas_radio')) {
-    console.log('[migrations] zonas_radio ya existe.');
+  if (!(await tablaExiste(dataSource, 'zonas_radio'))) {
+    console.log('[migrations] Creando tabla zonas_radio...');
+    await dataSource.query(`
+      CREATE TABLE \`zonas_radio\` (
+        \`id\` INT NOT NULL AUTO_INCREMENT,
+        \`nombre\` VARCHAR(120) NOT NULL,
+        \`tipo\` VARCHAR(20) NOT NULL DEFAULT 'radio',
+        \`latitud\` DECIMAL(10, 8) NOT NULL,
+        \`longitud\` DECIMAL(11, 8) NOT NULL,
+        \`radio_metros\` INT NULL DEFAULT NULL,
+        \`poligono\` JSON NULL,
+        \`barrio_nombre\` VARCHAR(120) NULL DEFAULT NULL,
+        \`origen_limites\` VARCHAR(20) NULL DEFAULT NULL,
+        \`color\` VARCHAR(20) NOT NULL DEFAULT '#0d9488',
+        \`repartidor\` VARCHAR(100) NULL DEFAULT NULL,
+        \`activo\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`creado_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`actualizado_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        KEY \`idx_zonas_radio_activo\` (\`activo\`),
+        KEY \`idx_zonas_radio_repartidor\` (\`repartidor\`),
+        KEY \`idx_zonas_radio_tipo\` (\`tipo\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
     return;
   }
 
-  console.log('[migrations] Creando tabla zonas_radio...');
-  await dataSource.query(`
-    CREATE TABLE \`zonas_radio\` (
-      \`id\` INT NOT NULL AUTO_INCREMENT,
-      \`nombre\` VARCHAR(120) NOT NULL,
-      \`latitud\` DECIMAL(10, 8) NOT NULL,
-      \`longitud\` DECIMAL(11, 8) NOT NULL,
-      \`radio_metros\` INT NOT NULL,
-      \`color\` VARCHAR(20) NOT NULL DEFAULT '#0d9488',
-      \`repartidor\` VARCHAR(100) NULL DEFAULT NULL,
-      \`activo\` TINYINT(1) NOT NULL DEFAULT 1,
-      \`creado_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      \`actualizado_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (\`id\`),
-      KEY \`idx_zonas_radio_activo\` (\`activo\`),
-      KEY \`idx_zonas_radio_repartidor\` (\`repartidor\`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  `);
+  console.log('[migrations] zonas_radio ya existe; verificando columnas de tipos...');
+
+  if (!(await columnaExiste(dataSource, 'zonas_radio', 'tipo'))) {
+    console.log('[migrations] Agregando zonas_radio.tipo...');
+    await dataSource.query(
+      "ALTER TABLE `zonas_radio` ADD COLUMN `tipo` VARCHAR(20) NOT NULL DEFAULT 'radio' AFTER `nombre`"
+    );
+  }
+
+  if (!(await columnaExiste(dataSource, 'zonas_radio', 'poligono'))) {
+    console.log('[migrations] Agregando zonas_radio.poligono...');
+    await dataSource.query(
+      'ALTER TABLE `zonas_radio` ADD COLUMN `poligono` JSON NULL AFTER `radio_metros`'
+    );
+  }
+
+  if (!(await columnaExiste(dataSource, 'zonas_radio', 'barrio_nombre'))) {
+    console.log('[migrations] Agregando zonas_radio.barrio_nombre...');
+    await dataSource.query(
+      'ALTER TABLE `zonas_radio` ADD COLUMN `barrio_nombre` VARCHAR(120) NULL DEFAULT NULL AFTER `poligono`'
+    );
+  }
+
+  if (!(await columnaExiste(dataSource, 'zonas_radio', 'origen_limites'))) {
+    console.log('[migrations] Agregando zonas_radio.origen_limites...');
+    await dataSource.query(
+      'ALTER TABLE `zonas_radio` ADD COLUMN `origen_limites` VARCHAR(20) NULL DEFAULT NULL AFTER `barrio_nombre`'
+    );
+  }
+
+  // Permitir NULL en radio_metros para barrio/poligono
+  try {
+    await dataSource.query(
+      'ALTER TABLE `zonas_radio` MODIFY COLUMN `radio_metros` INT NULL DEFAULT NULL'
+    );
+  } catch (error) {
+    console.warn('[migrations] No se pudo modificar radio_metros a NULL:', error);
+  }
 }
 
 async function migrarConfiguracionSistema(dataSource: DataSource): Promise<void> {

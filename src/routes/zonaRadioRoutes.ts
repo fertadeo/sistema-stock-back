@@ -5,6 +5,7 @@ const router = Router();
 const controller = new ZonaRadioController();
 
 router.get('/', controller.listar);
+router.post('/limites-barrio', controller.limitesBarrio);
 router.get('/:id', controller.obtenerPorId);
 router.post('/', controller.crear);
 router.put('/:id', controller.actualizar);
