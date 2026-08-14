@@ -372,6 +372,36 @@ async function migrarZonasRadio(dataSource: DataSource): Promise<void> {
   }
 }
 
+async function migrarTipoProducto(dataSource: DataSource): Promise<void> {
+  if (!(await columnaExiste(dataSource, 'productos', 'tipoProducto'))) {
+    console.log('[migrations] Agregando columna productos.tipoProducto...');
+    await dataSource.query(
+      "ALTER TABLE `productos` ADD COLUMN `tipoProducto` VARCHAR(32) NOT NULL DEFAULT 'venta_publico' AFTER `descripcion`"
+    );
+    return;
+  }
+
+  console.log('[migrations] productos.tipoProducto ya existe; normalizando columna y valores...');
+  try {
+    await dataSource.query(
+      "ALTER TABLE `productos` MODIFY COLUMN `tipoProducto` VARCHAR(32) NOT NULL DEFAULT 'venta_publico'"
+    );
+  } catch (error) {
+    console.warn('[migrations] No se pudo convertir tipoProducto a VARCHAR:', error);
+  }
+
+  try {
+    await dataSource.query(
+      "UPDATE `productos` SET `tipoProducto` = 'venta_publico' WHERE `tipoProducto` IS NULL OR TRIM(`tipoProducto`) = '' OR UPPER(`tipoProducto`) IN ('VENTA_PUBLICO', 'VENTA AL PUBLICO', 'VENTA_AL_PUBLICO')"
+    );
+    await dataSource.query(
+      "UPDATE `productos` SET `tipoProducto` = 'insumo' WHERE UPPER(`tipoProducto`) = 'INSUMO'"
+    );
+  } catch (error) {
+    console.warn('[migrations] No se pudieron normalizar valores de tipoProducto:', error);
+  }
+}
+
 async function migrarConfiguracionSistema(dataSource: DataSource): Promise<void> {
   if (!(await tablaExiste(dataSource, 'configuracion_sistema'))) {
     console.log('[migrations] Creando tabla configuracion_sistema...');
@@ -412,6 +442,7 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
   await migrarRepartidorAxelAFernando(dataSource);
   await migrarConfiguracionSistema(dataSource);
   await migrarZonasRadio(dataSource);
+  await migrarTipoProducto(dataSource);
 
   console.log('[migrations] Esquema verificado correctamente.');
 }

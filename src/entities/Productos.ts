@@ -5,6 +5,14 @@ export enum TipoProducto {
   INSUMO = 'insumo',
 }
 
+export function normalizarTipoProducto(valor: unknown): TipoProducto {
+  const n = String(valor ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return n === 'insumo' ? TipoProducto.INSUMO : TipoProducto.VENTA_PUBLICO;
+}
+
 @Entity()
 export class Productos { 
   @PrimaryGeneratedColumn()
@@ -26,8 +34,8 @@ export class Productos {
   descripcion!: string;
 
   @Column({
-    type: 'enum',
-    enum: TipoProducto,
+    type: 'varchar',
+    length: 32,
     default: TipoProducto.VENTA_PUBLICO,
   })
   tipoProducto!: TipoProducto;

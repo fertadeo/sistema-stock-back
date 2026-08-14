@@ -79,7 +79,7 @@ export class VentaService {
 
         // Calcular estadísticas
         const totalVentas = ventas.length;
-        const montoTotal = ventas.reduce((sum, venta) => sum + parseFloat(venta.monto_total), 0);
+        const montoTotal = ventas.reduce((sum, venta) => sum + (parseFloat(String(venta.monto_total)) || 0), 0);
         const ventasPorDia = this.agruparVentasPorDia(ventas);
         const ventasPorMedioPago = this.agruparVentasPorMedioPago(ventas);
         const ventasConSaldo = ventas.filter(v => v.saldo).length;
@@ -131,9 +131,14 @@ export class VentaService {
         const ventasPorDia = new Map<string, number>();
         
         ventas.forEach(venta => {
-            const fecha = venta.fecha_venta.toISOString().split('T')[0];
+            if (!venta.fecha_venta) return;
+            const fechaDate = venta.fecha_venta instanceof Date
+                ? venta.fecha_venta
+                : new Date(venta.fecha_venta);
+            if (Number.isNaN(fechaDate.getTime())) return;
+            const fecha = fechaDate.toISOString().split('T')[0];
             const montoActual = ventasPorDia.get(fecha) || 0;
-            ventasPorDia.set(fecha, montoActual + parseFloat(venta.monto_total));
+            ventasPorDia.set(fecha, montoActual + (parseFloat(String(venta.monto_total)) || 0));
         });
 
         return Object.fromEntries(ventasPorDia);

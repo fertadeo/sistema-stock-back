@@ -1,14 +1,49 @@
 import { Request, Response } from 'express';
-import { Productos, TipoProducto } from '../entities/Productos';
+import { Productos, TipoProducto, normalizarTipoProducto } from '../entities/Productos';
 import { AppDataSource } from '../config/database'; // Configura tu datasource de TypeORM
 
-const TIPOS_VALIDOS = new Set<string>(Object.values(TipoProducto));
+function esTipoProductoValido(valor: unknown): boolean {
+  if (typeof valor !== 'string' || !valor.trim()) return false;
+  const n = valor.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return n === 'insumo' || n === 'venta_publico' || n === 'venta_al_publico';
+}
 
 function parseTipoProducto(valor: unknown, fallback: TipoProducto = TipoProducto.VENTA_PUBLICO): TipoProducto {
-  if (typeof valor === 'string' && TIPOS_VALIDOS.has(valor)) {
-    return valor as TipoProducto;
+  if (valor == null || valor === '') return fallback;
+  return normalizarTipoProducto(valor);
+}
+
+function serializarProducto(producto: Productos | Record<string, unknown>) {
+  const row = producto as Productos & Record<string, unknown>;
+  return {
+    id: Number(row.id),
+    nombreProducto: String(row.nombreProducto ?? ''),
+    precioPublico: Number(row.precioPublico) || 0,
+    precioRevendedor: Number(row.precioRevendedor) || 0,
+    cantidadStock: Number(row.cantidadStock) || 0,
+    descripcion: String(row.descripcion ?? ''),
+    tipoProducto: parseTipoProducto(row.tipoProducto),
+  };
+}
+
+async function listarProductosDesdeDb(): Promise<Array<Productos | Record<string, unknown>>> {
+  try {
+    const rows = await AppDataSource.query(
+      'SELECT id, nombreProducto, precioPublico, precioRevendedor, cantidadStock, descripcion, tipoProducto FROM productos'
+    );
+    return Array.isArray(rows) ? rows : [];
+  } catch (error) {
+    console.warn('[productos] Listado con tipoProducto falló, reintentando sin esa columna:', error);
+    try {
+      const rows = await AppDataSource.query(
+        'SELECT id, nombreProducto, precioPublico, precioRevendedor, cantidadStock, descripcion FROM productos'
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch (errorSinTipo) {
+      console.error('[productos] No se pudieron leer productos:', errorSinTipo);
+      return [];
+    }
   }
-  return fallback;
 }
 
 // Controlador para importar productos (sin modificaciones)
@@ -50,16 +85,17 @@ const productoRepository = AppDataSource.getRepository(Productos);
 export const obtenerTodosLosProductos = async (req: Request, res: Response) => {
   try {
     const tipoQuery = typeof req.query.tipo === 'string' ? req.query.tipo : undefined;
-    const where =
-      tipoQuery && TIPOS_VALIDOS.has(tipoQuery)
-        ? { tipoProducto: tipoQuery as TipoProducto }
-        : undefined;
+    const productos = await listarProductosDesdeDb();
+    const lista = productos.map((producto) => serializarProducto(producto));
+    const filtrados =
+      tipoQuery && esTipoProductoValido(tipoQuery)
+        ? lista.filter((producto) => producto.tipoProducto === parseTipoProducto(tipoQuery))
+        : lista;
 
-    const productos = await productoRepository.find(where ? { where } : undefined);
-    res.json(productos);
+    res.json(filtrados);
   } catch (error) {
     console.error('Error al obtener todos los productos:', error);
-    res.status(500).json({ message: 'Error al obtener todos los productos' });
+    res.json([]);
   }
 };
 
@@ -80,13 +116,7 @@ export const obtenerProductoPorId = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
 
-    const resultado = {
-      id: producto.id,
-      nombreProducto: producto.nombreProducto,
-      precioPublico: producto.precioPublico,
-      precioRevendedor: producto.precioRevendedor,
-      tipoProducto: producto.tipoProducto,
-    };
+    const resultado = serializarProducto(producto);
 
 
     res.json(resultado);
@@ -142,7 +172,7 @@ export const actualizarProducto = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'ID de producto inválido' });
   }
 
-  if (tipoProducto !== undefined && !TIPOS_VALIDOS.has(tipoProducto)) {
+  if (tipoProducto !== undefined && !esTipoProductoValido(tipoProducto)) {
     return res.status(400).json({ message: 'Tipo de producto inválido' });
   }
 
@@ -232,7 +262,7 @@ export const crearProducto = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'El nombre del producto es obligatorio' });
   }
 
-  if (tipoProducto !== undefined && !TIPOS_VALIDOS.has(tipoProducto)) {
+  if (tipoProducto !== undefined && !esTipoProductoValido(tipoProducto)) {
     return res.status(400).json({ message: 'Tipo de producto inválido' });
   }
 
