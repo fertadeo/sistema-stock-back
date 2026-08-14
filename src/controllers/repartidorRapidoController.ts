@@ -153,23 +153,18 @@ export class RepartidorRapidoController {
                 });
             }
 
-            if (!productos || !Array.isArray(productos) || productos.length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Debe proporcionar al menos un producto'
-                });
-            }
+            const productosLista = Array.isArray(productos) ? productos : [];
 
-            if (!monto_total || monto_total <= 0) {
+            if (!monto_total || Number(monto_total) <= 0) {
                 return res.status(400).json({
                     success: false,
-                    message: 'El monto_total debe ser mayor a 0'
+                    message: 'El monto_total debe ser mayor a 0. Podés fiar un monto fijo sin seleccionar productos.'
                 });
             }
 
             const resultado = await repartidorRapidoService.registrarFiadoRapido({
                 cliente_id,
-                productos,
+                productos: productosLista,
                 monto_total,
                 repartidor_id,
                 envases_prestados,

@@ -103,12 +103,14 @@ export class RepartidorRapidoService {
                 cliente_id: data.cliente_id.toString(),
                 nombre_cliente: cliente.nombre,
                 telefono_cliente: cliente.telefono || '',
-                productos: data.productos.map(p => ({
+            productos: Array.isArray(data.productos)
+                ? data.productos.map(p => ({
                     producto_id: p.producto_id,
                     cantidad: p.cantidad,
                     precio_unitario: p.precio_unitario.toString(),
                     subtotal: (p.cantidad * p.precio_unitario).toString()
-                })),
+                }))
+                : [],
                 monto_total: data.monto_total.toString(),
                 medio_pago: data.medio_pago,
                 forma_pago: data.forma_pago,
@@ -263,7 +265,7 @@ export class RepartidorRapidoService {
      */
     async registrarFiadoRapido(data: {
         cliente_id: number;
-        productos: Array<{
+        productos?: Array<{
             producto_id: string;
             cantidad: number;
             precio_unitario: number;
@@ -277,8 +279,15 @@ export class RepartidorRapidoService {
         }>;
         observaciones?: string;
     }) {
+        const productos = Array.isArray(data.productos) ? data.productos : [];
+        const observaciones =
+            data.observaciones?.trim() ||
+            (productos.length === 0 ? 'Fiado por monto fijo' : undefined);
+
         return await this.registrarVentaRapida({
             ...data,
+            productos,
+            observaciones,
             medio_pago: 'credito',
             forma_pago: 'parcial',
             saldo_monto: data.monto_total
