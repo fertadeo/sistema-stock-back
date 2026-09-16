@@ -429,12 +429,60 @@ async function migrarConfiguracionSistema(dataSource: DataSource): Promise<void>
   }
 }
 
+async function migrarEnvasesPropiosClientes(dataSource: DataSource): Promise<void> {
+  if (!(await columnaExiste(dataSource, 'clientes', 'bidon_propio'))) {
+    console.log('[migrations] Agregando columna clientes.bidon_propio...');
+    await dataSource.query(
+      "ALTER TABLE `clientes` ADD COLUMN `bidon_propio` TINYINT(1) DEFAULT 0 COMMENT 'Indica si el cliente tiene bidón propio' AFTER `dia_reparto`"
+    );
+  } else {
+    console.log('[migrations] clientes.bidon_propio ya existe.');
+  }
+
+  if (!(await columnaExiste(dataSource, 'clientes', 'sifones_propios'))) {
+    console.log('[migrations] Agregando columna clientes.sifones_propios...');
+    await dataSource.query(
+      "ALTER TABLE `clientes` ADD COLUMN `sifones_propios` INT DEFAULT 0 COMMENT 'Cantidad de sifones propios que posee el cliente' AFTER `bidon_propio`"
+    );
+  } else {
+    console.log('[migrations] clientes.sifones_propios ya existe.');
+  }
+}
+
+async function migrarPagosRepartidor(dataSource: DataSource): Promise<void> {
+  if (await tablaExiste(dataSource, 'pagos_repartidor')) {
+    console.log('[migrations] pagos_repartidor ya existe.');
+    return;
+  }
+
+  console.log('[migrations] Creando tabla pagos_repartidor...');
+  await dataSource.query(`
+    CREATE TABLE \`pagos_repartidor\` (
+      \`id\` INT NOT NULL AUTO_INCREMENT,
+      \`repartidor_id\` INT NOT NULL,
+      \`repartidor_nombre\` VARCHAR(255) NULL,
+      \`monto\` DECIMAL(10, 2) NOT NULL,
+      \`medio_pago\` ENUM('efectivo', 'transferencia', 'debito', 'credito') NOT NULL DEFAULT 'efectivo',
+      \`observaciones\` TEXT NULL,
+      \`usuario_registro_id\` INT NULL,
+      \`fecha_pago\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`idx_pagos_repartidor_id\` (\`repartidor_id\`),
+      KEY \`idx_pagos_fecha\` (\`fecha_pago\`),
+      KEY \`idx_pagos_usuario\` (\`usuario_registro_id\`),
+      CONSTRAINT \`fk_pago_repartidor\` FOREIGN KEY (\`repartidor_id\`) REFERENCES \`repartidores\` (\`id\`) ON DELETE RESTRICT,
+      CONSTRAINT \`fk_pago_usuario\` FOREIGN KEY (\`usuario_registro_id\`) REFERENCES \`user\` (\`id\`) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Pagos de repartidores hacia la empresa'
+  `);
+}
+
 export async function runPendingMigrations(dataSource: DataSource): Promise<void> {
   const base = await obtenerNombreBase(dataSource);
   console.log(`[migrations] Verificando esquema en base de datos: ${base}`);
 
   await migrarVinculacionClientes(dataSource);
   await migrarPisoDepartamentoClientes(dataSource);
+  await migrarEnvasesPropiosClientes(dataSource);
   await migrarRepartidorUbicaciones(dataSource);
   await migrarRolesUsuario(dataSource);
   await migrarCamposUsuario(dataSource);
@@ -443,6 +491,7 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
   await migrarConfiguracionSistema(dataSource);
   await migrarZonasRadio(dataSource);
   await migrarTipoProducto(dataSource);
+  await migrarPagosRepartidor(dataSource);
 
   console.log('[migrations] Esquema verificado correctamente.');
 }

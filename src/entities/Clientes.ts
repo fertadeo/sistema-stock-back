@@ -50,6 +50,12 @@ export class Clientes {
   @Column()
     dia_reparto: string = '';
 
+  @Column({ type: 'tinyint', default: 0, comment: 'Indica si el cliente tiene bidón propio' })
+    bidon_propio: boolean = false;
+
+  @Column({ type: 'int', default: 0, comment: 'Cantidad de sifones propios que posee el cliente' })
+    sifones_propios: number = 0;
+
   @Column({ nullable: true })
     cliente_vinculado_id: number | null = null;
 
