@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
 import { RepartidorService } from "../services/repartidorService";
+import { RepartidorTotalesService } from "../services/repartidorTotalesService";
 
 export class RepartidorController {
     private repartidorService = new RepartidorService();
+    private repartidorTotalesService = new RepartidorTotalesService();
 
      crear = async (req: Request, res: Response) => {
         try {
@@ -76,6 +78,39 @@ export class RepartidorController {
         } catch (error) {
             res.status(500).json({
                 message: "Error al obtener repartidores por zona",
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    }
+
+    obtenerTotales = async (req: Request, res: Response) => {
+        try {
+            const { repartidor } = req.query;
+            
+            if (!repartidor || typeof repartidor !== 'string') {
+                return res.status(400).json({
+                    message: "El parámetro 'repartidor' es requerido",
+                    ejemplo: "/api/repartidores/totales?repartidor=NombreDelRepartidor"
+                });
+            }
+
+            const totales = await this.repartidorTotalesService.obtenerTotalesPorRepartidor(repartidor);
+            res.json(totales);
+        } catch (error) {
+            res.status(500).json({
+                message: "Error al obtener totales del repartidor",
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    }
+
+    obtenerTodosTotales = async (req: Request, res: Response) => {
+        try {
+            const totales = await this.repartidorTotalesService.obtenerTotalesTodosRepartidores();
+            res.json(totales);
+        } catch (error) {
+            res.status(500).json({
+                message: "Error al obtener totales de todos los repartidores",
                 error: error instanceof Error ? error.message : 'Error desconocido'
             });
         }
