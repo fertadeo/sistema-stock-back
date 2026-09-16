@@ -52,7 +52,7 @@ export class RepartidorTotalesService {
         const totalesEnvasesPropios = clientes.reduce(
             (acc, cliente) => {
                 acc.bidones += cliente.bidon_propio ? 1 : 0;
-                acc.sifones += cliente.sifones_propios || 0;
+                acc.sifones += cliente.sifones_propios ? 1 : 0;
                 return acc;
             },
             { bidones: 0, sifones: 0 }

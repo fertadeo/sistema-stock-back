@@ -9,12 +9,9 @@ type MedioPago = 'efectivo' | 'transferencia' | 'debito' | 'credito';
 interface MovimientoCuentaCorrienteRepartidor {
   id: string;
   fecha: string;
-  tipo: 'DEBITO_CIERRE' | 'CREDITO_PAGO' | 'CREDITO_COBRO';
-  origen: 'CIERRE' | 'PAGO' | 'COBRO';
-  referencia_id: string;
+  tipo: 'DEBITO' | 'CREDITO';
   descripcion: string;
-  debito: number;
-  credito: number;
+  monto: number;
   saldo_acumulado: number;
   medio_pago: MedioPago | null;
   observaciones: string | null;
@@ -102,12 +99,9 @@ export class CuentaCorrienteRepartidorService {
     return {
       id: `cierre-${cierre.id}`,
       fecha: serializarFecha(cierre.fecha_cierre),
-      tipo: 'DEBITO_CIERRE',
-      origen: 'CIERRE',
-      referencia_id: cierre.id.toString(),
+      tipo: 'DEBITO',
       descripcion: `Cierre de ventas - Balance fiado`,
-      debito: redondearMonto(debito),
-      credito: 0,
+      monto: redondearMonto(debito),
       saldo_acumulado: 0,
       medio_pago: null,
       observaciones: cierre.observaciones || null
@@ -123,12 +117,9 @@ export class CuentaCorrienteRepartidorService {
     return {
       id: `pago-${pago.id}`,
       fecha: serializarFecha(pago.fecha_pago),
-      tipo: 'CREDITO_PAGO',
-      origen: 'PAGO',
-      referencia_id: pago.id.toString(),
-      descripcion: `Pago del repartidor por $${credito}`,
-      debito: 0,
-      credito: redondearMonto(credito),
+      tipo: 'CREDITO',
+      descripcion: `Pago parcial - ${pago.observaciones || 'sin descripción'}`,
+      monto: redondearMonto(credito),
       saldo_acumulado: 0,
       medio_pago: pago.medio_pago,
       observaciones: pago.observaciones || null
@@ -144,12 +135,9 @@ export class CuentaCorrienteRepartidorService {
     return {
       id: `cobro-${cobro.id}`,
       fecha: serializarFecha(cobro.fecha_cobro),
-      tipo: 'CREDITO_COBRO',
-      origen: 'COBRO',
-      referencia_id: cobro.id.toString(),
-      descripcion: `Cobro a cliente ${cobro.nombre_cliente || 'desconocido'} por $${credito}`,
-      debito: 0,
-      credito: redondearMonto(credito),
+      tipo: 'CREDITO',
+      descripcion: `Cobro a cliente ${cobro.nombre_cliente || 'desconocido'}`,
+      monto: redondearMonto(credito),
       saldo_acumulado: 0,
       medio_pago: cobro.medio_pago,
       observaciones: cobro.observaciones || null
@@ -157,20 +145,20 @@ export class CuentaCorrienteRepartidorService {
   }
 
   private compararMovimientos(
-    a: { fecha: string; origen: 'CIERRE' | 'PAGO' | 'COBRO'; referencia_id: string },
-    b: { fecha: string; origen: 'CIERRE' | 'PAGO' | 'COBRO'; referencia_id: string }
+    a: { fecha: string; tipo: 'DEBITO' | 'CREDITO'; id: string },
+    b: { fecha: string; tipo: 'DEBITO' | 'CREDITO'; id: string }
   ) {
     const diferenciaFecha = new Date(a.fecha).getTime() - new Date(b.fecha).getTime();
     if (diferenciaFecha !== 0) {
       return diferenciaFecha;
     }
 
-    const diferenciaOrigen = a.origen.localeCompare(b.origen);
+    const diferenciaOrigen = a.tipo.localeCompare(b.tipo);
     if (diferenciaOrigen !== 0) {
       return diferenciaOrigen;
     }
 
-    return a.referencia_id.localeCompare(b.referencia_id);
+    return a.id.localeCompare(b.id);
   }
 
   private construirMovimientos(
@@ -187,7 +175,11 @@ export class CuentaCorrienteRepartidorService {
     let saldoAcumulado = 0;
 
     return movimientos.map((movimiento) => {
-      saldoAcumulado += movimiento.debito - movimiento.credito;
+      if (movimiento.tipo === 'DEBITO') {
+        saldoAcumulado += movimiento.monto;
+      } else {
+        saldoAcumulado -= movimiento.monto;
+      }
 
       return {
         ...movimiento,
@@ -217,22 +209,17 @@ export class CuentaCorrienteRepartidorService {
 
   private construirResumen(repartidor: Repartidor, movimientos: MovimientoCuentaCorrienteRepartidor[]) {
     const totalDebitos = redondearMonto(
-      movimientos.reduce((acumulado, movimiento) => acumulado + movimiento.debito, 0)
+      movimientos.filter(m => m.tipo === 'DEBITO').reduce((acumulado, movimiento) => acumulado + movimiento.monto, 0)
     );
     const totalCreditos = redondearMonto(
-      movimientos.reduce((acumulado, movimiento) => acumulado + movimiento.credito, 0)
+      movimientos.filter(m => m.tipo === 'CREDITO').reduce((acumulado, movimiento) => acumulado + movimiento.monto, 0)
     );
     const saldoActual = redondearMonto(totalDebitos - totalCreditos);
     const ultimoMovimiento = movimientos.length > 0 ? movimientos[movimientos.length - 1] : null;
 
     return {
-      repartidor: {
-        id: repartidor.id,
-        nombre: repartidor.nombre,
-        telefono: repartidor.telefono,
-        zona_reparto: repartidor.zona_reparto,
-        activo: repartidor.activo
-      },
+      repartidor_id: repartidor.id,
+      repartidor_nombre: repartidor.nombre,
       saldo_actual: saldoActual,
       total_debitos: totalDebitos,
       total_creditos: totalCreditos,
@@ -276,14 +263,12 @@ export class CuentaCorrienteRepartidorService {
 
     return {
       pago: {
-        id: pagoGuardado.id,
+        id: pagoGuardado.id.toString(),
         repartidor_id: pagoGuardado.repartidor_id,
-        repartidor_nombre: pagoGuardado.repartidor_nombre,
         monto: redondearMonto(Number(pagoGuardado.monto)),
         medio_pago: pagoGuardado.medio_pago,
-        observaciones: pagoGuardado.observaciones || null,
-        usuario_registro_id: pagoGuardado.usuario_registro_id ?? null,
-        fecha_pago: serializarFecha(pagoGuardado.fecha_pago)
+        fecha: serializarFecha(pagoGuardado.fecha_pago),
+        observaciones: pagoGuardado.observaciones || null
       },
       saldo_actual: resumen.saldo_actual
     };

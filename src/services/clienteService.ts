@@ -87,7 +87,7 @@ async function transformarCliente(
     repartidor: cliente.repartidor,
     dia_reparto: cliente.dia_reparto,
     bidon_propio: cliente.bidon_propio ?? false,
-    sifones_propios: cliente.sifones_propios ?? 0,
+    sifones_propios: cliente.sifones_propios ?? false,
     cliente_vinculado_id: cliente.cliente_vinculado_id ?? null,
     envases_prestados: cliente.envases_prestados || [],
   };

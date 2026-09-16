@@ -20,8 +20,8 @@ router.get("/deudores", getRepartidoresDeudores);
 router.get("/:id", repartidorController.obtenerPorId);
 router.get("/:id/cuenta-corriente/resumen", getResumenCuentaCorrienteRepartidor);
 router.get("/:id/cuenta-corriente", getCuentaCorrienteRepartidor);
-router.get("/:id/pagos", getPagosPorRepartidor);
-router.post("/:id/pagos", createPagoRepartidor);
+router.post("/:id/cuenta-corriente/pagos", createPagoRepartidor);
+router.get("/:id/cuenta-corriente/pagos", getPagosPorRepartidor);
 router.put("/:id", repartidorController.actualizar);
 router.delete("/:id", repartidorController.eliminar);
 

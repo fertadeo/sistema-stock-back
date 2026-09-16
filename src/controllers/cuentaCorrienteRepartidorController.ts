@@ -133,6 +133,7 @@ export const createPagoRepartidor = async (req: AuthRequest, res: Response) => {
 
     res.status(201).json({
       success: true,
+      message: 'Pago registrado exitosamente',
       data: resultado
     });
   } catch (error) {

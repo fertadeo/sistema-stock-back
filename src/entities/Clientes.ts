@@ -53,8 +53,8 @@ export class Clientes {
   @Column({ type: 'tinyint', default: 0, comment: 'Indica si el cliente tiene bidón propio' })
     bidon_propio: boolean = false;
 
-  @Column({ type: 'int', default: 0, comment: 'Cantidad de sifones propios que posee el cliente' })
-    sifones_propios: number = 0;
+  @Column({ type: 'tinyint', default: 0, comment: 'Indica si el cliente tiene sifones propios' })
+    sifones_propios: boolean = false;
 
   @Column({ nullable: true })
     cliente_vinculado_id: number | null = null;

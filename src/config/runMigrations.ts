@@ -442,7 +442,7 @@ async function migrarEnvasesPropiosClientes(dataSource: DataSource): Promise<voi
   if (!(await columnaExiste(dataSource, 'clientes', 'sifones_propios'))) {
     console.log('[migrations] Agregando columna clientes.sifones_propios...');
     await dataSource.query(
-      "ALTER TABLE `clientes` ADD COLUMN `sifones_propios` INT DEFAULT 0 COMMENT 'Cantidad de sifones propios que posee el cliente' AFTER `bidon_propio`"
+      "ALTER TABLE `clientes` ADD COLUMN `sifones_propios` TINYINT(1) DEFAULT 0 COMMENT 'Indica si el cliente tiene sifones propios' AFTER `bidon_propio`"
     );
   } else {
     console.log('[migrations] clientes.sifones_propios ya existe.');

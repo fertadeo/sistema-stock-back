@@ -28,7 +28,7 @@ SET @col_sifones_exists = (
 
 SET @sql_add_sifones = IF(
   @col_sifones_exists = 0,
-  'ALTER TABLE `clientes` ADD COLUMN `sifones_propios` INT DEFAULT 0 COMMENT ''Cantidad de sifones propios que posee el cliente'' AFTER `bidon_propio`',
+  'ALTER TABLE `clientes` ADD COLUMN `sifones_propios` TINYINT(1) DEFAULT 0 COMMENT ''Indica si el cliente tiene sifones propios'' AFTER `bidon_propio`',
   'SELECT ''sifones_propios ya existe'' AS msg'
 );
 PREPARE stmt_add_sifones FROM @sql_add_sifones;
