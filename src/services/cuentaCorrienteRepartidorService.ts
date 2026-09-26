@@ -62,6 +62,7 @@ export class CuentaCorrienteRepartidorService {
     const query = pagoRepartidorRepository.createQueryBuilder('pago');
     
     query.where('pago.repartidor_id = :repartidorId', { repartidorId });
+    query.andWhere('pago.activo = :activo', { activo: true });
 
     if (filtros?.desde) {
       query.andWhere('pago.fecha_pago >= :desde', { desde: filtros.desde });
@@ -78,6 +79,7 @@ export class CuentaCorrienteRepartidorService {
     const query = cobroRepository.createQueryBuilder('cobro');
     
     query.where('cobro.repartidor_id = :repartidorId', { repartidorId });
+    query.andWhere('cobro.activo = :activo', { activo: true });
 
     if (filtros?.desde) {
       query.andWhere('cobro.fecha_cobro >= :desde', { desde: filtros.desde });
@@ -357,5 +359,75 @@ export class CuentaCorrienteRepartidorService {
     }
 
     return deudores.sort((a, b) => b.saldo_actual - a.saldo_actual);
+  }
+
+  /**
+   * Actualizar un pago de repartidor existente
+   */
+  async actualizarPagoRepartidor(
+    pagoId: number,
+    datos: {
+      monto?: number;
+      medio_pago?: MedioPago;
+      observaciones?: string;
+    }
+  ) {
+    const pago = await pagoRepartidorRepository.findOne({
+      where: { id: pagoId, activo: true },
+      relations: ['repartidor']
+    });
+
+    if (!pago) {
+      throw new Error('Pago no encontrado');
+    }
+
+    // Validar datos si se proporcionan
+    if (datos.monto !== undefined) {
+      const monto = Number(datos.monto);
+      if (isNaN(monto) || monto <= 0) {
+        throw new Error('El monto debe ser un número mayor a 0');
+      }
+      pago.monto = monto;
+    }
+
+    if (datos.medio_pago !== undefined) {
+      const mediosPagoValidos: MedioPago[] = ['efectivo', 'transferencia', 'debito', 'credito'];
+      if (!mediosPagoValidos.includes(datos.medio_pago)) {
+        throw new Error('Medio de pago inválido');
+      }
+      pago.medio_pago = datos.medio_pago;
+    }
+
+    if (datos.observaciones !== undefined) {
+      pago.observaciones = datos.observaciones;
+    }
+
+    const pagoActualizado = await pagoRepartidorRepository.save(pago);
+
+    return {
+      id: pagoActualizado.id,
+      repartidor_id: pagoActualizado.repartidor_id,
+      repartidor_nombre: pagoActualizado.repartidor_nombre,
+      monto: redondearMonto(Number(pagoActualizado.monto)),
+      medio_pago: pagoActualizado.medio_pago,
+      observaciones: pagoActualizado.observaciones || null,
+      fecha_pago: serializarFecha(pagoActualizado.fecha_pago)
+    };
+  }
+
+  /**
+   * Eliminar un pago de repartidor (soft delete)
+   */
+  async eliminarPagoRepartidor(pagoId: number): Promise<void> {
+    const pago = await pagoRepartidorRepository.findOne({
+      where: { id: pagoId, activo: true }
+    });
+
+    if (!pago) {
+      throw new Error('Pago no encontrado');
+    }
+
+    pago.activo = false;
+    await pagoRepartidorRepository.save(pago);
   }
 }

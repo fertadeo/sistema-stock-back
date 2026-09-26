@@ -126,5 +126,96 @@ export const gastoController = {
                 error: error instanceof Error ? error.message : 'Error desconocido'
             });
         }
+    },
+
+    // Editar un gasto
+    editarGasto: async (req: Request, res: Response) => {
+        try {
+            const id = parseInt(req.params.id);
+            const { monto, concepto, detalles } = req.body;
+
+            if (isNaN(id)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'ID de gasto inválido'
+                });
+            }
+
+            const gastoExistente = await movimientoService.obtenerMovimientoPorId(id);
+
+            if (!gastoExistente || gastoExistente.tipo !== TipoMovimiento.GASTO) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Gasto no encontrado'
+                });
+            }
+
+            // Validar datos si se proporcionan
+            if (monto !== undefined && monto <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El monto debe ser mayor a 0'
+                });
+            }
+
+            // Actualizar el gasto
+            const gastoActualizado = await movimientoService.actualizarGasto(
+                id,
+                monto !== undefined ? monto : undefined,
+                concepto,
+                detalles
+            );
+
+            res.json({
+                success: true,
+                message: 'Gasto actualizado exitosamente',
+                gasto: gastoActualizado
+            });
+        } catch (error) {
+            console.error('Error al editar gasto:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al editar el gasto',
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
+    },
+
+    // Eliminar un gasto (soft delete)
+    eliminarGasto: async (req: Request, res: Response) => {
+        try {
+            const id = parseInt(req.params.id);
+
+            if (isNaN(id)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'ID de gasto inválido'
+                });
+            }
+
+            const gastoExistente = await movimientoService.obtenerMovimientoPorId(id);
+
+            if (!gastoExistente || gastoExistente.tipo !== TipoMovimiento.GASTO) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Gasto no encontrado'
+                });
+            }
+
+            // Eliminar el gasto (soft delete)
+            await movimientoService.eliminarGasto(id);
+
+            res.json({
+                success: true,
+                message: 'Gasto eliminado exitosamente'
+            });
+        } catch (error) {
+            console.error('Error al eliminar gasto:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al eliminar el gasto',
+                error: error instanceof Error ? error.message : 'Error desconocido'
+            });
+        }
     }
 }; 

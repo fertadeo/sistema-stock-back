@@ -279,3 +279,58 @@ export const getResumenFiadosPorFecha = async (req: AuthRequest, res: Response) 
     responderError(res, error, 'Error al obtener el resumen de fiados por fecha');
   }
 };
+
+export const editarCobro = async (req: AuthRequest, res: Response) => {
+  try {
+    const cobroId = parseInt(req.params.cobroId, 10);
+    
+    if (isNaN(cobroId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID de cobro inválido'
+      });
+    }
+
+    const {
+      monto,
+      medio_pago,
+      observaciones
+    } = req.body;
+
+    const resultado = await cuentaCorrienteService.actualizarCobro(cobroId, {
+      monto,
+      medio_pago,
+      observaciones
+    });
+
+    res.json({
+      success: true,
+      message: 'Cobro actualizado exitosamente',
+      data: resultado
+    });
+  } catch (error) {
+    responderError(res, error, 'Error al actualizar el cobro');
+  }
+};
+
+export const eliminarCobro = async (req: AuthRequest, res: Response) => {
+  try {
+    const cobroId = parseInt(req.params.cobroId, 10);
+    
+    if (isNaN(cobroId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID de cobro inválido'
+      });
+    }
+
+    await cuentaCorrienteService.eliminarCobro(cobroId);
+
+    res.json({
+      success: true,
+      message: 'Cobro eliminado exitosamente'
+    });
+  } catch (error) {
+    responderError(res, error, 'Error al eliminar el cobro');
+  }
+};

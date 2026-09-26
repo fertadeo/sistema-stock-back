@@ -204,3 +204,58 @@ export const getRepartidoresDeudores = async (req: Request, res: Response) => {
     responderError(res, error, 'Error al obtener los repartidores deudores');
   }
 };
+
+export const editarPagoRepartidor = async (req: AuthRequest, res: Response) => {
+  try {
+    const pagoId = parseInt(req.params.pagoId, 10);
+    
+    if (isNaN(pagoId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID de pago inválido'
+      });
+    }
+
+    const {
+      monto,
+      medio_pago,
+      observaciones
+    } = req.body;
+
+    const resultado = await cuentaCorrienteRepartidorService.actualizarPagoRepartidor(pagoId, {
+      monto,
+      medio_pago,
+      observaciones
+    });
+
+    res.json({
+      success: true,
+      message: 'Pago actualizado exitosamente',
+      data: resultado
+    });
+  } catch (error) {
+    responderError(res, error, 'Error al actualizar el pago del repartidor');
+  }
+};
+
+export const eliminarPagoRepartidor = async (req: AuthRequest, res: Response) => {
+  try {
+    const pagoId = parseInt(req.params.pagoId, 10);
+    
+    if (isNaN(pagoId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID de pago inválido'
+      });
+    }
+
+    await cuentaCorrienteRepartidorService.eliminarPagoRepartidor(pagoId);
+
+    res.json({
+      success: true,
+      message: 'Pago eliminado exitosamente'
+    });
+  } catch (error) {
+    responderError(res, error, 'Error al eliminar el pago del repartidor');
+  }
+};

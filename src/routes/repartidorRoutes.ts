@@ -5,7 +5,9 @@ import {
   createPagoRepartidor,
   getCuentaCorrienteRepartidor,
   getPagosPorRepartidor,
-  getRepartidoresDeudores
+  getRepartidoresDeudores,
+  editarPagoRepartidor,
+  eliminarPagoRepartidor
 } from "../controllers/cuentaCorrienteRepartidorController";
 
 const router = Router();
@@ -22,6 +24,8 @@ router.get("/:id/cuenta-corriente/resumen", getResumenCuentaCorrienteRepartidor)
 router.get("/:id/cuenta-corriente", getCuentaCorrienteRepartidor);
 router.post("/:id/cuenta-corriente/pagos", createPagoRepartidor);
 router.get("/:id/cuenta-corriente/pagos", getPagosPorRepartidor);
+router.put("/cuenta-corriente/pagos/:pagoId", editarPagoRepartidor);
+router.delete("/cuenta-corriente/pagos/:pagoId", eliminarPagoRepartidor);
 router.put("/:id", repartidorController.actualizar);
 router.delete("/:id", repartidorController.eliminar);
 

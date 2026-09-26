@@ -42,4 +42,7 @@ export class Cobro {
 
     @Column({ type: 'varchar', length: 255, nullable: true })
     venta_relacionada_id!: string; // UUID de venta relacionada si aplica
+
+    @Column({ type: 'tinyint', width: 1, default: 1 })
+    activo!: boolean;
 }
