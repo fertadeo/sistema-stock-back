@@ -157,4 +157,60 @@ export class MovimientoService {
         await this.movimientoRepository.save(movimientos);
         return movimientos.length;
     }
+
+    /** Actualizar un gasto */
+    async actualizarGasto(
+        id: number,
+        monto?: number,
+        concepto?: string,
+        detalles?: Record<string, any>
+    ): Promise<Movimiento> {
+        const gasto = await this.movimientoRepository.findOne({
+            where: { id, tipo: TipoMovimiento.GASTO, activo: true }
+        });
+
+        if (!gasto) {
+            throw new Error('Gasto no encontrado');
+        }
+
+        // Actualizar solo los campos proporcionados
+        if (monto !== undefined) {
+            gasto.monto = -monto; // Los gastos se registran como negativos
+        }
+
+        if (concepto !== undefined) {
+            gasto.descripcion = `Gasto: ${concepto}`;
+        }
+
+        if (detalles !== undefined) {
+            gasto.detalles = {
+                ...gasto.detalles,
+                ...detalles
+            };
+        }
+
+        const gastoActualizado = await this.movimientoRepository.save(gasto);
+
+        // Notificar actualización
+        eventService.broadcastEvent('movimiento_actualizado', gastoActualizado);
+
+        return gastoActualizado;
+    }
+
+    /** Eliminar un gasto (soft delete) */
+    async eliminarGasto(id: number): Promise<void> {
+        const gasto = await this.movimientoRepository.findOne({
+            where: { id, tipo: TipoMovimiento.GASTO, activo: true }
+        });
+
+        if (!gasto) {
+            throw new Error('Gasto no encontrado');
+        }
+
+        gasto.activo = false;
+        await this.movimientoRepository.save(gasto);
+
+        // Notificar eliminación
+        eventService.broadcastEvent('movimiento_eliminado', { id });
+    }
 } 

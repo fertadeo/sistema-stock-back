@@ -22,7 +22,9 @@ import {
   getCobrosPorCliente,
   getCuentaCorriente,
   getCuentaCorrienteResumen,
-  getResumenFiadosPorFecha
+  getResumenFiadosPorFecha,
+  editarCobro,
+  eliminarCobro
 } from '../controllers/cuentaCorrienteController';
 import {
   createMovimientoEnvasesPorCliente,
@@ -45,6 +47,8 @@ router.get('/:id/cuenta-corriente/resumen', getCuentaCorrienteResumen);
 router.get('/:id/cuenta-corriente', getCuentaCorriente);
 router.get('/:id/cobros', getCobrosPorCliente);
 router.post('/:id/cobros', createCobroPorCliente);
+router.put('/cobros/:cobroId', editarCobro);
+router.delete('/cobros/:cobroId', eliminarCobro);
 router.get('/:id/envases/resumen', getEnvasesResumenPorCliente);
 router.get('/:id/envases/movimientos', getMovimientosEnvasesPorCliente);
 router.post('/:id/envases/movimientos', createMovimientoEnvasesPorCliente);

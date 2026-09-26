@@ -39,4 +39,7 @@ export class PagoRepartidor {
 
     @CreateDateColumn()
     fecha_pago!: Date;
+
+    @Column({ type: 'tinyint', width: 1, default: 1 })
+    activo!: boolean;
 }

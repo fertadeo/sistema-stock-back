@@ -214,6 +214,8 @@ export class CuentaCorrienteService {
         query.where('cobro.cliente_id = :clienteId', { clienteId });
       }
 
+      query.andWhere('cobro.activo = :activo', { activo: true });
+
       if (filtros?.desde) {
         query.andWhere('cobro.fecha_cobro >= :desde', { desde: filtros.desde });
       }
@@ -520,6 +522,7 @@ export class CuentaCorrienteService {
               COUNT(*) AS cantidad,
               MAX(cob.fecha_cobro) AS ultimo_at
             FROM cobros cob
+            WHERE cob.activo = 1
             GROUP BY cob.cliente_id
           ) cr ON cr.cliente_id = c.id`
         : '';
@@ -710,6 +713,7 @@ export class CuentaCorrienteService {
         cobros = await cobroRepository
           .createQueryBuilder('cobro')
           .where('cobro.venta_relacionada_id IN (:...ventaIds)', { ventaIds })
+          .andWhere('cobro.activo = :activo', { activo: true })
           .getMany();
       } catch (error) {
         if (esErrorTablaFaltante(error, 'cobros')) {
@@ -766,5 +770,93 @@ export class CuentaCorrienteService {
         fiados.length > 0 ? Math.round((cobrados.length / fiados.length) * 100) : 0,
       fiados
     };
+  }
+
+  /**
+   * Actualizar un cobro existente
+   */
+  async actualizarCobro(
+    cobroId: number,
+    datos: {
+      monto?: number;
+      medio_pago?: MedioPago;
+      observaciones?: string;
+    }
+  ) {
+    try {
+      const cobro = await cobroRepository.findOne({
+        where: { id: cobroId, activo: true },
+        relations: ['cliente']
+      });
+
+      if (!cobro) {
+        throw new Error('Cobro no encontrado');
+      }
+
+      // Validar datos si se proporcionan
+      if (datos.monto !== undefined) {
+        if (isNaN(datos.monto) || datos.monto <= 0) {
+          throw new Error('El monto debe ser un número mayor a 0');
+        }
+        cobro.monto = datos.monto;
+      }
+
+      if (datos.medio_pago !== undefined) {
+        if (!['efectivo', 'transferencia', 'debito', 'credito'].includes(datos.medio_pago)) {
+          throw new Error('Medio de pago inválido');
+        }
+        cobro.medio_pago = datos.medio_pago;
+      }
+
+      if (datos.observaciones !== undefined) {
+        cobro.observaciones = datos.observaciones;
+      }
+
+      const cobroActualizado = await cobroRepository.save(cobro);
+
+      // Invalidar caché de deudores
+      invalidarCacheDeudores();
+
+      return {
+        id: cobroActualizado.id,
+        cliente_id: cobroActualizado.cliente_id,
+        nombre_cliente: cobroActualizado.nombre_cliente,
+        monto: cobroActualizado.monto,
+        medio_pago: cobroActualizado.medio_pago,
+        observaciones: cobroActualizado.observaciones,
+        fecha_cobro: cobroActualizado.fecha_cobro
+      };
+    } catch (error) {
+      if (esErrorTablaFaltante(error, 'cobros')) {
+        throw new Error(MENSAJE_TABLA_COBROS_FALTANTE);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Eliminar un cobro (soft delete)
+   */
+  async eliminarCobro(cobroId: number): Promise<void> {
+    try {
+      const cobro = await cobroRepository.findOne({
+        where: { id: cobroId, activo: true }
+      });
+
+      if (!cobro) {
+        throw new Error('Cobro no encontrado');
+      }
+
+      cobro.activo = false;
+      await cobroRepository.save(cobro);
+
+      // Invalidar caché de deudores
+      invalidarCacheDeudores();
+    } catch (error) {
+      if (esErrorTablaFaltante(error, 'cobros')) {
+        throw new Error(MENSAJE_TABLA_COBROS_FALTANTE);
+      }
+      throw error;
+    }
   }
 }

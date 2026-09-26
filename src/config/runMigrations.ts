@@ -476,6 +476,38 @@ async function migrarPagosRepartidor(dataSource: DataSource): Promise<void> {
   `);
 }
 
+async function migrarCobrosSoftDelete(dataSource: DataSource): Promise<void> {
+  if (!(await columnaExiste(dataSource, 'cobros', 'activo'))) {
+    console.log('[migrations] Agregando columna cobros.activo para soft delete...');
+    await dataSource.query(
+      'ALTER TABLE `cobros` ADD COLUMN `activo` TINYINT(1) NOT NULL DEFAULT 1'
+    );
+    
+    if (!(await indiceExiste(dataSource, 'cobros', 'idx_cobros_activo'))) {
+      console.log('[migrations] Creando índice idx_cobros_activo...');
+      await dataSource.query('CREATE INDEX `idx_cobros_activo` ON `cobros` (`activo`)');
+    }
+  } else {
+    console.log('[migrations] cobros.activo ya existe.');
+  }
+}
+
+async function migrarPagosRepartidorSoftDelete(dataSource: DataSource): Promise<void> {
+  if (!(await columnaExiste(dataSource, 'pagos_repartidor', 'activo'))) {
+    console.log('[migrations] Agregando columna pagos_repartidor.activo para soft delete...');
+    await dataSource.query(
+      'ALTER TABLE `pagos_repartidor` ADD COLUMN `activo` TINYINT(1) NOT NULL DEFAULT 1'
+    );
+    
+    if (!(await indiceExiste(dataSource, 'pagos_repartidor', 'idx_pagos_repartidor_activo'))) {
+      console.log('[migrations] Creando índice idx_pagos_repartidor_activo...');
+      await dataSource.query('CREATE INDEX `idx_pagos_repartidor_activo` ON `pagos_repartidor` (`activo`)');
+    }
+  } else {
+    console.log('[migrations] pagos_repartidor.activo ya existe.');
+  }
+}
+
 export async function runPendingMigrations(dataSource: DataSource): Promise<void> {
   const base = await obtenerNombreBase(dataSource);
   console.log(`[migrations] Verificando esquema en base de datos: ${base}`);
@@ -492,6 +524,8 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
   await migrarZonasRadio(dataSource);
   await migrarTipoProducto(dataSource);
   await migrarPagosRepartidor(dataSource);
+  await migrarCobrosSoftDelete(dataSource);
+  await migrarPagosRepartidorSoftDelete(dataSource);
 
   console.log('[migrations] Esquema verificado correctamente.');
 }
