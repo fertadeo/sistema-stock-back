@@ -28,6 +28,7 @@ router.post('/cerrar-cuenta/:descarga_id', descargaController.cerrarCuenta);
 router.get('/estado-cuenta/:descarga_id', descargaController.obtenerEstadoCuenta);
 
 router.put('/:descarga_id/precios-unitarios', descargaController.actualizarPreciosUnitarios);
+router.put('/:descarga_id/cantidades', descargaController.actualizarCantidadesVendidas);
 
 router.delete('/:descarga_id', descargaController.eliminarDescarga);
 

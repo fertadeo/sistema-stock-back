@@ -3,7 +3,109 @@ import { AppDataSource } from '../config/database';
 import { Descarga } from '../entities/Descarga';
 import { Repartidor } from '../entities/Repartidor';
 import { Carga } from '../entities/Carga';
-import { Equal, Between } from 'typeorm';
+import { VentaCerrada } from '../entities/VentaCerrada';
+import { Equal, Between, IsNull } from 'typeorm';
+
+function precioUnitarioDescarga(
+  descarga: Descarga,
+  item: { producto_id: number; producto: { precioPublico: number } }
+): number {
+  if (Array.isArray(descarga.precios_unitarios)) {
+    const editado = descarga.precios_unitarios.find(
+      (precio: { producto_id: number; precio_unitario: number }) => precio.producto_id === item.producto_id
+    );
+    if (editado) return Number(editado.precio_unitario) || 0;
+  }
+  return Number(item.producto.precioPublico) || 0;
+}
+
+export function totalVentaDesdeDescarga(descarga: Descarga): number {
+  return (descarga.carga?.items || []).reduce((total, item) => {
+    const devueltos = Array.isArray(descarga.productos_devueltos)
+      ? descarga.productos_devueltos.find(
+          (producto: { producto_id: number; cantidad: number }) => producto.producto_id === item.producto_id
+        )?.cantidad || 0
+      : 0;
+    const vendidos = item.cantidad - devueltos;
+    return total + vendidos * precioUnitarioDescarga(descarga, item);
+  }, 0);
+}
+
+export async function guardarCantidadesVendidas(
+  descargaId: number,
+  productos: { producto_id: number; cantidad_vendida: number }[]
+): Promise<{ montoTotal: number }> {
+  if (!Array.isArray(productos) || productos.length === 0) {
+    throw new Error('Indicá las cantidades vendidas a corregir');
+  }
+
+  const descargaRepository = AppDataSource.getRepository(Descarga);
+  const ventaRepository = AppDataSource.getRepository(VentaCerrada);
+
+  const descarga = await descargaRepository.findOne({
+    where: { id: descargaId },
+    relations: ['carga', 'carga.items', 'carga.items.producto']
+  });
+
+  if (!descarga) {
+    throw new Error('Descarga no encontrada');
+  }
+
+  const venta = await ventaRepository.findOne({
+    where: { proceso_id: descarga.id, deleted_at: IsNull() }
+  });
+
+  if (venta?.estado === 'Finalizado') {
+    throw new Error('La rendición ya está finalizada y no se puede corregir');
+  }
+
+  const devueltosActuales = Array.isArray(descarga.productos_devueltos) ? descarga.productos_devueltos : [];
+  const productosDevueltos = (descarga.carga?.items || []).map((item) => {
+    const editado = productos.find((producto) => Number(producto.producto_id) === item.producto_id);
+    const devueltoActual = devueltosActuales.find(
+      (producto: { producto_id: number; cantidad: number }) => producto.producto_id === item.producto_id
+    )?.cantidad || 0;
+    let vendida = item.cantidad - devueltoActual;
+
+    if (editado) {
+      vendida = Math.round(Number(editado.cantidad_vendida));
+      if (!Number.isFinite(vendida) || vendida < 0 || vendida > item.cantidad) {
+        throw new Error(
+          `La cantidad vendida de ${item.producto.nombreProducto} debe estar entre 0 y ${item.cantidad}`
+        );
+      }
+    }
+
+    return {
+      producto_id: item.producto_id,
+      cantidad: item.cantidad - vendida
+    };
+  });
+
+  descarga.productos_devueltos = productosDevueltos;
+  descarga.productos_vendidos = productosDevueltos.reduce(
+    (total, producto) => {
+      const item = descarga.carga.items.find((cargaItem) => cargaItem.producto_id === producto.producto_id);
+      return total + ((item?.cantidad || 0) - producto.cantidad);
+    },
+    0
+  );
+  const montoTotal = totalVentaDesdeDescarga(descarga);
+  descarga.monto_total = montoTotal;
+  await descargaRepository.save(descarga);
+
+  if (venta) {
+    const comision = Number(venta.comision_porcentaje) || 0;
+    const pagos = Number(venta.monto_efectivo) + Number(venta.monto_transferencia);
+    venta.total_venta = montoTotal;
+    venta.ganancia_repartidor = montoTotal * (comision / 100);
+    venta.ganancia_fabrica = montoTotal - venta.ganancia_repartidor;
+    venta.balance_fiado = pagos - montoTotal;
+    await ventaRepository.save(venta);
+  }
+
+  return { montoTotal };
+}
 
 interface VentasPorProducto {
   [key: number]: {
@@ -584,6 +686,31 @@ export const descargaController = {
         message: 'Error al eliminar la descarga',
         error: (error as Error).message
       });
+    }
+  },
+
+  actualizarCantidadesVendidas: async (req: Request, res: Response) => {
+    try {
+      const descargaId = parseInt(req.params.descarga_id);
+      const { productos } = req.body as {
+        productos?: { producto_id: number; cantidad_vendida: number }[];
+      };
+
+      if (!descargaId) {
+        return res.status(400).json({ success: false, message: 'Descarga inválida' });
+      }
+
+      const { montoTotal } = await guardarCantidadesVendidas(descargaId, productos || []);
+
+      res.json({
+        success: true,
+        message: 'Cantidades actualizadas en la descarga',
+        monto_total: montoTotal
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error al actualizar las cantidades';
+      const status = message === 'Descarga no encontrada' ? 404 : 400;
+      res.status(status).json({ success: false, message });
     }
   },
 

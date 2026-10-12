@@ -5,6 +5,7 @@ import { Repartidor } from '../entities/Repartidor';
 import { Descarga } from '../entities/Descarga';
 import { In, IsNull } from 'typeorm';
 import { MovimientoService } from '../services/movimientoService';
+import { guardarCantidadesVendidas, totalVentaDesdeDescarga } from './descargaController';
 
 const whereActivas = { deleted_at: IsNull() };
 
@@ -56,18 +57,7 @@ export const createVentaCerrada = async (req: Request, res: Response) => {
       });
     }
 
-    // Calcular el total real de la venta basado en los productos vendidos
-    const total_venta = descarga.carga.items.reduce((total, item) => {
-      const devueltos = Array.isArray(descarga.productos_devueltos) 
-        ? descarga.productos_devueltos.find(
-            (p: { producto_id: number; cantidad: number }) => 
-            p.producto_id === item.producto_id
-          )?.cantidad || 0
-        : 0;
-      
-      const vendidos = item.cantidad - devueltos;
-      return total + (vendidos * item.producto.precioPublico);
-    }, 0);
+    const total_venta = totalVentaDesdeDescarga(descarga);
 
     // Calcular el balance_fiado como la diferencia entre los pagos recibidos y el total
     const pagos_recibidos = (monto_efectivo || 0) + (monto_transferencia || 0);
@@ -215,6 +205,8 @@ export const getVentasCerradas = async (req: Request, res: Response) => {
         return {
           producto_id: item.producto_id,
           nombre: item.producto.nombreProducto,
+          cantidad_cargada: item.cantidad,
+          cantidad_devuelta: devueltos,
           cantidad_vendida,
           precio_unitario,
           subtotal
@@ -315,6 +307,8 @@ export const getVentaCerradaById = async (req: Request, res: Response) => {
       return {
         producto_id: item.producto_id,
         nombre: item.producto.nombreProducto,
+        cantidad_cargada: item.cantidad,
+        cantidad_devuelta: devueltos,
         cantidad_vendida,
         precio_unitario,
         subtotal
@@ -428,6 +422,8 @@ export const getVentasCerradasByRepartidor = async (req: Request, res: Response)
         return {
           producto_id: item.producto_id,
           nombre: item.producto.nombreProducto,
+          cantidad_cargada: item.cantidad,
+          cantidad_devuelta: devueltos,
           cantidad_vendida,
           precio_unitario,
           subtotal
@@ -841,5 +837,83 @@ export const restaurarVentaCerrada = async (req: Request, res: Response) => {
       message: 'Error al rehabilitar la venta cerrada',
       error: (error as Error).message
     });
+  }
+};
+
+export const corregirVentaCerrada = async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { monto_efectivo, monto_transferencia, productos } = req.body as {
+      monto_efectivo?: number;
+      monto_transferencia?: number;
+      productos?: { producto_id: number; cantidad_vendida: number }[];
+    };
+
+    const venta = await ventaCerradaRepository.findOne({
+      where: { id, ...whereActivas }
+    });
+
+    if (!venta) {
+      return res.status(404).json({ success: false, message: 'Venta cerrada no encontrada' });
+    }
+
+    if (venta.estado === 'Finalizado') {
+      return res.status(400).json({
+        success: false,
+        message: 'La rendición ya está finalizada. Desagrupala para poder corregirla.'
+      });
+    }
+
+    if (Array.isArray(productos) && productos.length > 0) {
+      await guardarCantidadesVendidas(venta.proceso_id, productos);
+    }
+
+    const descarga = await descargaRepository.findOne({
+      where: { id: venta.proceso_id },
+      relations: ['carga', 'carga.items', 'carga.items.producto']
+    });
+
+    if (!descarga) {
+      return res.status(404).json({ success: false, message: 'La descarga de esta venta no existe' });
+    }
+
+    const efectivo = monto_efectivo === undefined ? Number(venta.monto_efectivo) : Number(monto_efectivo);
+    const transferencia = monto_transferencia === undefined ? Number(venta.monto_transferencia) : Number(monto_transferencia);
+
+    if (!Number.isFinite(efectivo) || efectivo < 0 || !Number.isFinite(transferencia) || transferencia < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Efectivo y transferencia tienen que ser importes válidos'
+      });
+    }
+
+    const totalVenta = totalVentaDesdeDescarga(descarga);
+    const comision = Number(venta.comision_porcentaje) || 0;
+    venta.monto_efectivo = efectivo;
+    venta.monto_transferencia = transferencia;
+    venta.total_venta = totalVenta;
+    venta.ganancia_repartidor = totalVenta * (comision / 100);
+    venta.ganancia_fabrica = totalVenta - venta.ganancia_repartidor;
+    venta.balance_fiado = efectivo + transferencia - totalVenta;
+    await ventaCerradaRepository.save(venta);
+
+    res.json({
+      success: true,
+      message: 'Venta corregida. La descarga quedó actualizada.',
+      venta_cerrada: {
+        id: venta.id,
+        proceso_id: venta.proceso_id,
+        total_venta: venta.total_venta,
+        monto_efectivo: venta.monto_efectivo,
+        monto_transferencia: venta.monto_transferencia,
+        balance_fiado: venta.balance_fiado,
+        ganancia_repartidor: venta.ganancia_repartidor,
+        ganancia_fabrica: venta.ganancia_fabrica
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error al corregir la venta';
+    console.error('Error al corregir venta cerrada:', error);
+    res.status(400).json({ success: false, message });
   }
 }; 
