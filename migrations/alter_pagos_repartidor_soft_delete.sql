@@ -19,5 +19,20 @@ PREPARE alterIfNotExists FROM @preparedStatement;
 EXECUTE alterIfNotExists;
 DEALLOCATE PREPARE alterIfNotExists;
 
--- Crear índice si no existe
-CREATE INDEX IF NOT EXISTS `idx_pagos_repartidor_activo` ON `pagos_repartidor` (`activo`);
+-- Crear índice si no existe (MySQL no soporta CREATE INDEX IF NOT EXISTS)
+SET @dbname = DATABASE();
+SET @tablename = 'pagos_repartidor';
+SET @indexname = 'idx_pagos_repartidor_activo';
+SET @preparedStatement = (SELECT IF(
+  (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+    WHERE TABLE_SCHEMA = @dbname
+    AND TABLE_NAME = @tablename
+    AND INDEX_NAME = @indexname
+  ) > 0,
+  'SELECT 1',
+  'CREATE INDEX `idx_pagos_repartidor_activo` ON `pagos_repartidor` (`activo`)'
+));
+PREPARE createIndexIfNotExists FROM @preparedStatement;
+EXECUTE createIndexIfNotExists;
+DEALLOCATE PREPARE createIndexIfNotExists;
