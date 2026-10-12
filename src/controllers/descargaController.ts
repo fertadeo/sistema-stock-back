@@ -55,10 +55,6 @@ export async function guardarCantidadesVendidas(
     where: { proceso_id: descarga.id, deleted_at: IsNull() }
   });
 
-  if (venta?.estado === 'Finalizado') {
-    throw new Error('La rendición ya está finalizada y no se puede corregir');
-  }
-
   const devueltosActuales = Array.isArray(descarga.productos_devueltos) ? descarga.productos_devueltos : [];
   const productosDevueltos = (descarga.carga?.items || []).map((item) => {
     const editado = productos.find((producto) => Number(producto.producto_id) === item.producto_id);
