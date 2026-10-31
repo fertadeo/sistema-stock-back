@@ -79,7 +79,15 @@ export const getUsers = async (_req: AuthRequest, res: Response) => {
 };
 
 export const createUser = async (req: AuthRequest, res: Response) => {
-  const { email, password, role, repartidor_id, nombre, solo_clientes_propios } = req.body;
+  const {
+    email,
+    password,
+    role,
+    repartidor_id,
+    nombre,
+    solo_clientes_propios,
+    nuevo_repartidor,
+  } = req.body;
   const actor = req.user!;
 
   try {
@@ -95,8 +103,15 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ message: 'No tiene permisos para asignar ese rol' });
     }
 
-    if (role === USER_ROLES.REPARTIDOR && !repartidor_id) {
-      return res.status(400).json({ message: 'Debe seleccionar un repartidor para cuentas de repartidor' });
+    const crearFichaNueva =
+      role === USER_ROLES.REPARTIDOR &&
+      nuevo_repartidor &&
+      typeof nuevo_repartidor === 'object';
+
+    if (role === USER_ROLES.REPARTIDOR && !repartidor_id && !crearFichaNueva) {
+      return res.status(400).json({
+        message: 'Debe seleccionar un repartidor o cargar los datos de uno nuevo',
+      });
     }
 
     if (
@@ -111,17 +126,59 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'El usuario ya existe' });
     }
 
-    const repartidorIdValidado =
-      role === USER_ROLES.REPARTIDOR
-        ? await validateRepartidorId(repartidor_id)
-        : null;
+    let repartidorIdValidado: string | null = null;
+    let repartidorCreado: Repartidor | null = null;
+
+    if (role === USER_ROLES.REPARTIDOR && crearFichaNueva) {
+      const nombreRep =
+        typeof nuevo_repartidor.nombre === 'string'
+          ? nuevo_repartidor.nombre.trim()
+          : '';
+      const telefonoRep =
+        typeof nuevo_repartidor.telefono === 'string'
+          ? nuevo_repartidor.telefono.trim()
+          : '';
+      const zonaRep =
+        typeof nuevo_repartidor.zona_reparto === 'string'
+          ? nuevo_repartidor.zona_reparto.trim()
+          : '';
+
+      if (!nombreRep) {
+        return res.status(400).json({ message: 'El nombre del repartidor es obligatorio' });
+      }
+
+      const repartidorRepo = AppDataSource.getRepository(Repartidor);
+      const duplicado = await repartidorRepo
+        .createQueryBuilder('r')
+        .where('LOWER(TRIM(r.nombre)) = LOWER(:nombre)', { nombre: nombreRep })
+        .andWhere('r.activo = :activo', { activo: true })
+        .getOne();
+
+      if (duplicado) {
+        return res.status(409).json({
+          message: `Ya existe un repartidor activo con el nombre "${nombreRep}"`,
+        });
+      }
+
+      repartidorCreado = await repartidorRepo.save(
+        repartidorRepo.create({
+          nombre: nombreRep,
+          telefono: telefonoRep || '-',
+          zona_reparto: zonaRep || '-',
+          activo: true,
+        })
+      );
+      repartidorIdValidado = String(repartidorCreado.id);
+    } else if (role === USER_ROLES.REPARTIDOR) {
+      repartidorIdValidado = await validateRepartidorId(repartidor_id);
+    }
 
     const hashedPassword = await bcrypt.hash(password, saltRounds);
     const newUser = AppDataSource.getRepository(User).create({
       email,
       password: hashedPassword,
       role,
-      nombre,
+      nombre: nombre || repartidorCreado?.nombre,
       activo: true,
       nivel_usuario: nivelFromRole(role),
       repartidor_id: repartidorIdValidado,
@@ -134,6 +191,14 @@ export const createUser = async (req: AuthRequest, res: Response) => {
     res.status(201).json({
       success: true,
       data: serializeUser(newUser),
+      repartidor: repartidorCreado
+        ? {
+            id: repartidorCreado.id,
+            nombre: repartidorCreado.nombre,
+            telefono: repartidorCreado.telefono,
+            zona_reparto: repartidorCreado.zona_reparto,
+          }
+        : undefined,
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'Repartidor no encontrado') {

@@ -2,6 +2,9 @@ import { AppDataSource } from '../config/database';
 import { RepartidorRutaParada } from '../entities/RepartidorRutaParada';
 import { PushSubscription } from '../entities/PushSubscription';
 import { Clientes } from '../entities/Clientes';
+import { User } from '../entities/User';
+import { Repartidor } from '../entities/Repartidor';
+import { USER_ROLES } from '../constants/roles';
 import { pushNotificationService } from './pushNotificationService';
 
 export interface CrearParadaInput {
@@ -16,6 +19,13 @@ export interface ActualizarParadaInput {
   hora_alerta?: string | null;
   visitado?: boolean;
   orden?: number;
+}
+
+export interface DelegarRutaInput {
+  repartidor_id: number;
+  fecha?: string;
+  reemplazar?: boolean;
+  paradas: Array<{ cliente_id: number; orden?: number }>;
 }
 
 function fechaHoy(): string {
@@ -258,6 +268,126 @@ export class RepartidorRutaService {
       throw new Error('No hay suscripción push en este dispositivo. Activá alertas en Ruta.');
     }
     return { enviados };
+  }
+
+  async delegarRuta(input: DelegarRutaInput) {
+    const repartidorId = Number(input.repartidor_id);
+    if (!Number.isFinite(repartidorId) || repartidorId <= 0) {
+      throw new Error('repartidor_id inválido');
+    }
+
+    if (!Array.isArray(input.paradas) || input.paradas.length === 0) {
+      throw new Error('Debés incluir al menos una parada');
+    }
+
+    const repartidor = await AppDataSource.getRepository(Repartidor).findOne({
+      where: { id: repartidorId },
+    });
+    if (!repartidor || !repartidor.activo) {
+      throw new Error('Repartidor no encontrado o inactivo');
+    }
+
+    const user = await AppDataSource.getRepository(User).findOne({
+      where: {
+        repartidor_id: String(repartidorId),
+        role: USER_ROLES.REPARTIDOR,
+        activo: true,
+      },
+    });
+    if (!user) {
+      throw new Error(
+        `El repartidor "${repartidor.nombre}" no tiene acceso de usuario. Crealo en Centro de cuentas.`
+      );
+    }
+
+    const fecha = input.fecha || fechaHoy();
+    const reemplazar = input.reemplazar !== false;
+
+    const clienteIds = input.paradas.map((p) => Number(p.cliente_id));
+    if (clienteIds.some((id) => !Number.isFinite(id) || id <= 0)) {
+      throw new Error('Hay cliente_id inválidos en las paradas');
+    }
+
+    const clientes = await this.clienteRepo
+      .createQueryBuilder('c')
+      .where('c.id IN (:...ids)', { ids: clienteIds })
+      .getMany();
+    const clientesPorId = new Map(clientes.map((c) => [c.id, c]));
+    for (const id of clienteIds) {
+      if (!clientesPorId.has(id)) {
+        throw new Error(`Cliente ${id} no encontrado`);
+      }
+    }
+
+    if (reemplazar) {
+      await this.paradaRepo.delete({ user_id: user.id, fecha });
+    }
+
+    const existentes = reemplazar
+      ? []
+      : await this.paradaRepo.find({ where: { user_id: user.id, fecha } });
+    const idsYaEnRuta = new Set(existentes.map((p) => p.cliente_id));
+
+    let ordenBase = 0;
+    if (!reemplazar && existentes.length > 0) {
+      ordenBase = Math.max(...existentes.map((p) => p.orden || 0));
+    }
+
+    const aCrear: RepartidorRutaParada[] = [];
+    let ordenAuto = ordenBase;
+    for (let i = 0; i < input.paradas.length; i += 1) {
+      const item = input.paradas[i];
+      const clienteId = Number(item.cliente_id);
+      if (idsYaEnRuta.has(clienteId)) continue;
+
+      ordenAuto += 1;
+      const orden = Number.isFinite(Number(item.orden)) && Number(item.orden) > 0
+        ? Number(item.orden)
+        : ordenAuto;
+
+      aCrear.push(
+        this.paradaRepo.create({
+          user_id: user.id,
+          cliente_id: clienteId,
+          comentario: null,
+          hora_alerta: null,
+          fecha,
+          alerta_enviada: false,
+          visitado: false,
+          orden,
+        })
+      );
+      idsYaEnRuta.add(clienteId);
+    }
+
+    if (aCrear.length > 0) {
+      await this.paradaRepo.save(aCrear);
+    }
+
+    const paradas = await this.listarParadas(user.id, fecha);
+
+    let push_enviado = 0;
+    if (pushNotificationService.estaConfigurado()) {
+      const frontendUrl = (process.env.FRONTEND_URL || 'https://sistema.soderiadonjavier.com').replace(
+        /\/+$/,
+        ''
+      );
+      push_enviado = await pushNotificationService.enviarAPushUsuario(user.id, {
+        title: 'Nueva hoja de ruta',
+        body: `Tenés ${paradas.length} paradas asignadas para hoy.`,
+        url: `${frontendUrl}/repartidor/ruta`,
+      });
+    }
+
+    return {
+      user_id: user.id,
+      repartidor: { id: repartidor.id, nombre: repartidor.nombre },
+      fecha,
+      reemplazado: reemplazar,
+      cantidad: paradas.length,
+      paradas,
+      push_enviado,
+    };
   }
 }
 

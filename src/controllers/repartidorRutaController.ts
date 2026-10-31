@@ -137,4 +137,27 @@ export class RepartidorRutaController {
       return res.status(400).json({ success: false, message });
     }
   };
+
+  delegarRuta = async (req: AuthRequest, res: Response) => {
+    try {
+      const { repartidor_id, fecha, reemplazar, paradas } = req.body;
+      const resultado = await repartidorRutaService.delegarRuta({
+        repartidor_id: Number(repartidor_id),
+        fecha,
+        reemplazar,
+        paradas,
+      });
+      return res.status(201).json({ success: true, data: resultado });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al delegar la ruta';
+      const status = message.includes('no tiene acceso')
+        ? 400
+        : message.includes('no encontrado')
+          ? 404
+          : message.includes('Debés') || message.includes('inválid')
+            ? 400
+            : 500;
+      return res.status(status).json({ success: false, message });
+    }
+  };
 }
