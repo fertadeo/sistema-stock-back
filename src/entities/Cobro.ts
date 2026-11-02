@@ -30,12 +30,21 @@ export class Cobro {
     @Column({ type: 'text', nullable: true })
     observaciones!: string;
 
+    /** Dueño contable del cobro (quien originó el fiado / a quien le corresponde). */
     @Column({ nullable: true })
     repartidor_id!: number;
 
     @ManyToOne(() => Repartidor, { nullable: true })
     @JoinColumn({ name: 'repartidor_id' })
     repartidor!: Repartidor;
+
+    /** Quién cobró en calle (puede ser otro si cobra históricos ajenos). */
+    @Column({ nullable: true })
+    cobrado_por_repartidor_id!: number | null;
+
+    @ManyToOne(() => Repartidor, { nullable: true })
+    @JoinColumn({ name: 'cobrado_por_repartidor_id' })
+    cobrado_por_repartidor!: Repartidor | null;
 
     @CreateDateColumn()
     fecha_cobro!: Date;

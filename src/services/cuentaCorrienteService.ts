@@ -347,7 +347,11 @@ export class CuentaCorrienteService {
     medio_pago: MedioPago;
     observaciones?: string;
     venta_relacionada_id?: string | null;
+    /** Dueño contable (quién originó el fiado). */
     repartidor_id?: number | null;
+    /** Quién cobró en calle. */
+    cobrado_por_repartidor_id?: number | null;
+    cobrado_por_nombre?: string | null;
   }) {
     const monto = Number(input.monto);
 
@@ -376,7 +380,8 @@ export class CuentaCorrienteService {
         medio_pago: input.medio_pago,
         observaciones: input.observaciones,
         venta_relacionada_id: input.venta_relacionada_id || undefined,
-        repartidor_id: input.repartidor_id ?? undefined
+        repartidor_id: input.repartidor_id ?? undefined,
+        cobrado_por_repartidor_id: input.cobrado_por_repartidor_id ?? null,
       });
 
       cobroGuardado = await queryRunner.manager.save(cobro);
@@ -409,6 +414,28 @@ export class CuentaCorrienteService {
       console.error('Error al registrar movimiento de cobro de cliente:', error);
     }
 
+    const esHistoricoAjeno =
+      input.repartidor_id != null &&
+      input.cobrado_por_repartidor_id != null &&
+      Number(input.repartidor_id) !== Number(input.cobrado_por_repartidor_id);
+
+    if (esHistoricoAjeno) {
+      try {
+        const { avisoRepartidorService } = await import('./avisoRepartidorService');
+        await avisoRepartidorService.crearCobroHistorico({
+          repartidor_dueno_id: Number(input.repartidor_id),
+          cobrado_por_repartidor_id: Number(input.cobrado_por_repartidor_id),
+          cobrado_por_nombre: input.cobrado_por_nombre?.trim() || 'Otro repartidor',
+          cliente_id: input.cliente_id,
+          cliente_nombre: cliente.nombre,
+          cobro_id: cobroGuardado!.id,
+          monto,
+        });
+      } catch (error) {
+        console.error('Error al crear aviso de cobro histórico:', error);
+      }
+    }
+
     const resumen = await this.obtenerResumenPorCliente(input.cliente_id);
 
     return {
@@ -421,10 +448,162 @@ export class CuentaCorrienteService {
         observaciones: cobroGuardado!.observaciones || null,
         venta_relacionada_id: cobroGuardado!.venta_relacionada_id || null,
         repartidor_id: cobroGuardado!.repartidor_id ?? null,
+        cobrado_por_repartidor_id: cobroGuardado!.cobrado_por_repartidor_id ?? null,
         fecha_cobro: serializarFecha(cobroGuardado!.fecha_cobro)
       },
-      saldo_actual: resumen.saldo_actual
+      saldo_actual: resumen.saldo_actual,
+      historico_ajeno: esHistoricoAjeno,
     };
+  }
+
+  /**
+   * Deudores de clientes asignados al repartidor, separados en cartera propia
+   * vs saldos originados por otros (Cobrar por X).
+   */
+  async obtenerCarterasDeudores(repartidorId: number, repartidorNombre: string) {
+    const nombre = repartidorNombre.trim();
+    if (!nombre) {
+      return { propia: [], por_otro: [] as Array<{ repartidor_id: number; repartidor_nombre: string; deudores: DeudorListItem[] }> };
+    }
+
+    const debitosSql = `
+      SELECT
+        CAST(v.cliente_id AS UNSIGNED) AS cliente_id,
+        CAST(NULLIF(TRIM(v.repartidor_id), '') AS UNSIGNED) AS dueno_id,
+        SUM(CAST(v.saldo_monto AS DECIMAL(12,2))) AS total_debitos
+      FROM venta v
+      INNER JOIN clientes c ON c.id = CAST(v.cliente_id AS UNSIGNED)
+      WHERE v.saldo = 1
+        AND v.cliente_id IS NOT NULL
+        AND v.cliente_id <> ''
+        AND CAST(v.saldo_monto AS DECIMAL(12,2)) > 0
+        AND LOWER(TRIM(c.repartidor)) = LOWER(?)
+      GROUP BY CAST(v.cliente_id AS UNSIGNED), CAST(NULLIF(TRIM(v.repartidor_id), '') AS UNSIGNED)
+    `;
+
+    let creditosSql = `
+      SELECT
+        cob.cliente_id AS cliente_id,
+        cob.repartidor_id AS dueno_id,
+        SUM(cob.monto) AS total_creditos
+      FROM cobros cob
+      INNER JOIN clientes c ON c.id = cob.cliente_id
+      WHERE cob.activo = 1
+        AND LOWER(TRIM(c.repartidor)) = LOWER(?)
+      GROUP BY cob.cliente_id, cob.repartidor_id
+    `;
+
+    type AggRow = { cliente_id: number; dueno_id: number | null; total_debitos?: number; total_creditos?: number };
+
+    const debitos = await queryWithRetry<AggRow[]>(debitosSql, [nombre]);
+    let creditos: AggRow[] = [];
+    try {
+      creditos = await queryWithRetry<AggRow[]>(creditosSql, [nombre]);
+    } catch (error) {
+      if (!esErrorTablaFaltante(error, 'cobros')) throw error;
+      creditos = [];
+    }
+
+    const saldoPorClave = new Map<string, { cliente_id: number; dueno_id: number | null; debitos: number; creditos: number }>();
+
+    for (const row of debitos) {
+      const clienteId = Number(row.cliente_id);
+      const duenoId = row.dueno_id == null || Number.isNaN(Number(row.dueno_id)) ? null : Number(row.dueno_id);
+      const key = `${clienteId}:${duenoId ?? 'null'}`;
+      const actual = saldoPorClave.get(key) || { cliente_id: clienteId, dueno_id: duenoId, debitos: 0, creditos: 0 };
+      actual.debitos += Number(row.total_debitos || 0);
+      saldoPorClave.set(key, actual);
+    }
+    for (const row of creditos) {
+      const clienteId = Number(row.cliente_id);
+      const duenoId = row.dueno_id == null || Number.isNaN(Number(row.dueno_id)) ? null : Number(row.dueno_id);
+      const key = `${clienteId}:${duenoId ?? 'null'}`;
+      const actual = saldoPorClave.get(key) || { cliente_id: clienteId, dueno_id: duenoId, debitos: 0, creditos: 0 };
+      actual.creditos += Number(row.total_creditos || 0);
+      saldoPorClave.set(key, actual);
+    }
+
+    const clienteIds = [...new Set([...saldoPorClave.values()].map((v) => v.cliente_id))];
+    if (clienteIds.length === 0) {
+      return { propia: [], por_otro: [] };
+    }
+
+    const clientes = await clienteRepository
+      .createQueryBuilder('c')
+      .where('c.id IN (:...ids)', { ids: clienteIds })
+      .getMany();
+    const clientesMap = new Map(clientes.map((c) => [c.id, c]));
+
+    const repartidorRepo = AppDataSource.getRepository(
+      (await import('../entities/Repartidor')).Repartidor
+    );
+    const duenosIds = [
+      ...new Set(
+        [...saldoPorClave.values()]
+          .map((v) => v.dueno_id)
+          .filter((id): id is number => id != null && id > 0)
+      ),
+    ];
+    const duenos =
+      duenosIds.length > 0
+        ? await repartidorRepo
+            .createQueryBuilder('r')
+            .where('r.id IN (:...ids)', { ids: duenosIds })
+            .getMany()
+        : [];
+    const duenosMap = new Map(duenos.map((r) => [r.id, r]));
+
+    const propia: DeudorListItem[] = [];
+    const porOtroMap = new Map<number, { repartidor_id: number; repartidor_nombre: string; deudores: DeudorListItem[] }>();
+
+    for (const item of saldoPorClave.values()) {
+      const saldo = redondearMonto(item.debitos - item.creditos);
+      if (saldo <= 0) continue;
+      const cliente = clientesMap.get(item.cliente_id);
+      if (!cliente) continue;
+
+      const deudor: DeudorListItem & { dueno_repartidor_id?: number | null } = {
+        cliente_id: cliente.id,
+        nombre: cliente.nombre || '',
+        telefono: cliente.telefono || '',
+        direccion: cliente.direccion || '',
+        estado: Boolean(cliente.estado),
+        zona: null,
+        repartidor: cliente.repartidor || '',
+        dia_reparto: cliente.dia_reparto || '',
+        saldo_actual: saldo,
+        total_debitos: redondearMonto(item.debitos),
+        total_creditos: redondearMonto(item.creditos),
+        cantidad_movimientos: 0,
+        ultimo_movimiento_at: null,
+        dueno_repartidor_id: item.dueno_id,
+      };
+
+      if (item.dueno_id === repartidorId) {
+        propia.push(deudor);
+      } else if (item.dueno_id != null && item.dueno_id > 0) {
+        const dueno = duenosMap.get(item.dueno_id);
+        const nombreDueno = dueno?.nombre || `Repartidor #${item.dueno_id}`;
+        const bucket = porOtroMap.get(item.dueno_id) || {
+          repartidor_id: item.dueno_id,
+          repartidor_nombre: nombreDueno,
+          deudores: [],
+        };
+        bucket.deudores.push(deudor);
+        porOtroMap.set(item.dueno_id, bucket);
+      }
+      // Ventas sin dueño no entran en "propia" ni "por otro" de este desglose
+    }
+
+    const sortFn = (a: DeudorListItem, b: DeudorListItem) =>
+      b.saldo_actual - a.saldo_actual || a.nombre.localeCompare(b.nombre);
+    propia.sort(sortFn);
+    const por_otro = [...porOtroMap.values()].map((g) => ({
+      ...g,
+      deudores: g.deudores.sort(sortFn),
+    }));
+
+    return { propia, por_otro };
   }
 
   async obtenerResumenPorCliente(clienteId: number) {

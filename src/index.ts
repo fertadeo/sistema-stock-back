@@ -27,6 +27,7 @@ import repartidorRutaRoutes from './routes/repartidorRutaRoutes';
 import facturacionRoutes from './routes/facturacionRoutes';
 import configuracionSistemaRoutes from './routes/configuracionSistemaRoutes';
 import zonaRadioRoutes from './routes/zonaRadioRoutes';
+import avisoRepartidorRoutes from './routes/avisoRepartidorRoutes';
 import { repartidorRutaService } from './services/repartidorRutaService';
 import { pushNotificationService } from './services/pushNotificationService';
 
@@ -72,6 +73,7 @@ app.use('/api/repartidor-ruta', repartidorRutaRoutes);
 app.use('/api/facturacion', facturacionRoutes);
 app.use('/api/configuracion', configuracionSistemaRoutes);
 app.use('/api/zonas-radio', zonaRadioRoutes);
+app.use('/api/avisos-repartidor', avisoRepartidorRoutes);
 
 app.get('/', (req, res) => {
   res.send('¡Hola, mundo!');

@@ -1,11 +1,28 @@
 import { AppDataSource } from "../config/database";
 import { Repartidor } from "../entities/Repartidor";
+import { REPARTIDOR_PIN_COLORS } from "../constants/repartidorPinColors";
 
 export class RepartidorService {
     private repartidorRepository = AppDataSource.getRepository(Repartidor);
 
+    async siguienteColorPin(): Promise<string> {
+        const existentes = await this.repartidorRepository.find({
+            select: ['color_pin'],
+        });
+        const usados = new Set(
+            existentes
+                .map((r) => (r.color_pin || '').trim().toUpperCase())
+                .filter(Boolean)
+        );
+        for (const color of REPARTIDOR_PIN_COLORS) {
+            if (!usados.has(color.toUpperCase())) return color;
+        }
+        return REPARTIDOR_PIN_COLORS[existentes.length % REPARTIDOR_PIN_COLORS.length];
+    }
+
     async crearRepartidor(data: Partial<Repartidor>): Promise<Repartidor> {
-        const repartidor = this.repartidorRepository.create(data);
+        const color_pin = data.color_pin?.trim() || (await this.siguienteColorPin());
+        const repartidor = this.repartidorRepository.create({ ...data, color_pin });
         return await this.repartidorRepository.save(repartidor);
     }
 

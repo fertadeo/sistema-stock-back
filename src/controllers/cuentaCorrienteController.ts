@@ -158,8 +158,25 @@ export const createCobroPorCliente = async (req: AuthRequest, res: Response) => 
       medio_pago,
       observaciones,
       venta_relacionada_id,
-      repartidor_id
+      repartidor_id,
+      cobrado_por_repartidor_id,
+      cobrado_por_nombre,
+      historico,
     } = req.body;
+
+    const operadorId =
+      cobrado_por_repartidor_id != null
+        ? Number(cobrado_por_repartidor_id)
+        : req.user?.repartidor_id
+          ? Number(req.user.repartidor_id)
+          : null;
+
+    const duenoId =
+      repartidor_id != null
+        ? Number(repartidor_id)
+        : historico
+          ? null
+          : operadorId;
 
     const resultado = await cuentaCorrienteService.crearCobroParaCliente({
       cliente_id: clienteId,
@@ -167,7 +184,12 @@ export const createCobroPorCliente = async (req: AuthRequest, res: Response) => 
       medio_pago,
       observaciones,
       venta_relacionada_id,
-      repartidor_id
+      repartidor_id: duenoId,
+      cobrado_por_repartidor_id: operadorId,
+      cobrado_por_nombre:
+        typeof cobrado_por_nombre === 'string'
+          ? cobrado_por_nombre
+          : req.user?.email || null,
     });
 
     res.status(201).json({
@@ -256,6 +278,47 @@ export const getClientesDeudores = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     responderError(res, error, 'Error al obtener los clientes deudores');
+  }
+};
+
+export const getCarterasDeudores = async (req: AuthRequest, res: Response) => {
+  try {
+    const { obtenerRepartidorNombreDeUsuario } = await import(
+      '../utils/repartidorClienteAccess'
+    );
+    const { AppDataSource } = await import('../config/database');
+    const { Repartidor } = await import('../entities/Repartidor');
+    const { USER_ROLES } = await import('../constants/roles');
+
+    let repartidorId: number | null = null;
+    let repartidorNombre: string | null = null;
+
+    if (req.user?.role === USER_ROLES.REPARTIDOR && req.user.repartidor_id) {
+      repartidorId = Number(req.user.repartidor_id);
+      repartidorNombre = await obtenerRepartidorNombreDeUsuario(req.user);
+    } else if (typeof req.query.repartidor_id === 'string' && req.query.repartidor_id) {
+      repartidorId = Number(req.query.repartidor_id);
+      const rep = await AppDataSource.getRepository(Repartidor).findOne({
+        where: { id: repartidorId },
+      });
+      repartidorNombre = rep?.nombre || null;
+    }
+
+    if (!repartidorId || !repartidorNombre) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere un repartidor (sesión o query repartidor_id)',
+      });
+    }
+
+    const data = await cuentaCorrienteService.obtenerCarterasDeudores(
+      repartidorId,
+      repartidorNombre
+    );
+
+    res.json({ success: true, data });
+  } catch (error) {
+    responderError(res, error, 'Error al obtener carteras de deudores');
   }
 };
 

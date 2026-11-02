@@ -5,6 +5,7 @@ import { Repartidor } from '../entities/Repartidor';
 import bcrypt from 'bcrypt';
 import { AuthRequest, AuthUserPayload } from '../middlewares/auth';
 import { roleLabel, USER_ROLES, UserRole, isValidRole } from '../constants/roles';
+import { RepartidorService } from '../services/repartidorService';
 
 const saltRounds = 10;
 
@@ -160,14 +161,13 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         });
       }
 
-      repartidorCreado = await repartidorRepo.save(
-        repartidorRepo.create({
-          nombre: nombreRep,
-          telefono: telefonoRep || '-',
-          zona_reparto: zonaRep || '-',
-          activo: true,
-        })
-      );
+      const repartidorService = new RepartidorService();
+      repartidorCreado = await repartidorService.crearRepartidor({
+        nombre: nombreRep,
+        telefono: telefonoRep || '-',
+        zona_reparto: zonaRep || '-',
+        activo: true,
+      });
       repartidorIdValidado = String(repartidorCreado.id);
     } else if (role === USER_ROLES.REPARTIDOR) {
       repartidorIdValidado = await validateRepartidorId(repartidor_id);
@@ -197,6 +197,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
             nombre: repartidorCreado.nombre,
             telefono: repartidorCreado.telefono,
             zona_reparto: repartidorCreado.zona_reparto,
+            color_pin: repartidorCreado.color_pin,
           }
         : undefined,
     });

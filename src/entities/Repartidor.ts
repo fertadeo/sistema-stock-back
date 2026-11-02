@@ -17,6 +17,10 @@ export class Repartidor {
     @Column({ default: true })
     activo!: boolean;
 
+    /** Color Hex del pin en el mapa (estable por ficha). */
+    @Column({ type: 'varchar', length: 20, nullable: true })
+    color_pin!: string | null;
+
     @CreateDateColumn()
     fecha_registro!: Date;
 }

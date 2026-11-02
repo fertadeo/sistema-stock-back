@@ -19,6 +19,7 @@ import {
 import {
   createCobroPorCliente,
   getClientesDeudores,
+  getCarterasDeudores,
   getCobrosPorCliente,
   getCuentaCorriente,
   getCuentaCorrienteResumen,
@@ -31,12 +32,21 @@ import {
   getEnvasesResumenPorCliente,
   getMovimientosEnvasesPorCliente
 } from '../controllers/envasesClienteController';
+import { delegarZona } from '../controllers/delegarZonaController';
+import { requireRole } from '../middlewares/auth';
+import { USER_ROLES } from '../constants/roles';
 
 const router = Router();
 
 // Rutas principales de clientes
 router.get('/', getClientes);
 router.get('/deudores', getClientesDeudores);
+router.get('/deudores-cartera', getCarterasDeudores);
+router.post(
+  '/delegar-zona',
+  requireRole(USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN),
+  delegarZona
+);
 router.get('/fiados-diario', getResumenFiadosPorFecha);
 router.get('/clientes-por-mes', getClientesPorMes);
 router.get('/getNextClienteId', getNextClienteId);

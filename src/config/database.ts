@@ -26,6 +26,7 @@ import { RepartidorRutaParada } from '../entities/RepartidorRutaParada';
 import { PushSubscription } from '../entities/PushSubscription';
 import { ConfiguracionSistema } from '../entities/ConfiguracionSistema';
 import { ZonaRadio } from '../entities/ZonaRadio';
+import { AvisoRepartidor } from '../entities/AvisoRepartidor';
 
 const isPm2 = process.env.pm_id !== undefined || Boolean(process.env.PM2_HOME);
 let configSource = 'variables de entorno';
@@ -106,7 +107,7 @@ export const AppDataSource = new DataSource({
   database: dbName,
   synchronize: false,
   logging: false,
-  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor, Movimiento, Cobro, MovimientoEnvase, OperacionPendiente, VisitaNoEncontrado, RepartidorUbicacion, RepartidorRutaParada, PushSubscription, ConfiguracionSistema, ZonaRadio],
+  entities: [User, Clientes, Productos, Venta, Repartidor, Carga, Descarga, CargaItem, DescargaEnvases, EnvasesPrestados, Zona, VentaCerrada, Revendedor, Movimiento, Cobro, MovimientoEnvase, OperacionPendiente, VisitaNoEncontrado, RepartidorUbicacion, RepartidorRutaParada, PushSubscription, ConfiguracionSistema, ZonaRadio, AvisoRepartidor],
   extra: {
     connectionLimit: dbPoolSize,
     waitForConnections: true,

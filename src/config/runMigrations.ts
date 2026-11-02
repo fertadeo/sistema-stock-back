@@ -508,6 +508,74 @@ async function migrarPagosRepartidorSoftDelete(dataSource: DataSource): Promise<
   }
 }
 
+async function migrarColorPinRepartidor(dataSource: DataSource): Promise<void> {
+  if (!(await columnaExiste(dataSource, 'repartidores', 'color_pin'))) {
+    console.log('[migrations] Agregando columna repartidores.color_pin...');
+    await dataSource.query(
+      'ALTER TABLE `repartidores` ADD COLUMN `color_pin` VARCHAR(20) NULL DEFAULT NULL AFTER `activo`'
+    );
+  } else {
+    console.log('[migrations] repartidores.color_pin ya existe.');
+  }
+
+  const colores = [
+    '#2563EB',
+    '#16A34A',
+    '#DC2626',
+    '#9333EA',
+    '#EA580C',
+    '#DB2777',
+    '#0891B2',
+    '#4F46E5',
+  ];
+  const sinColor: Array<{ id: number }> = await dataSource.query(
+    `SELECT id FROM repartidores WHERE color_pin IS NULL OR TRIM(color_pin) = '' ORDER BY id ASC`
+  );
+  for (let i = 0; i < sinColor.length; i += 1) {
+    const color = colores[i % colores.length];
+    await dataSource.query('UPDATE repartidores SET color_pin = ? WHERE id = ?', [
+      color,
+      sinColor[i].id,
+    ]);
+  }
+}
+
+async function migrarCobradoPorCobros(dataSource: DataSource): Promise<void> {
+  if (!(await columnaExiste(dataSource, 'cobros', 'cobrado_por_repartidor_id'))) {
+    console.log('[migrations] Agregando columna cobros.cobrado_por_repartidor_id...');
+    await dataSource.query(
+      'ALTER TABLE `cobros` ADD COLUMN `cobrado_por_repartidor_id` INT NULL DEFAULT NULL AFTER `repartidor_id`'
+    );
+  } else {
+    console.log('[migrations] cobros.cobrado_por_repartidor_id ya existe.');
+  }
+}
+
+async function migrarAvisosRepartidor(dataSource: DataSource): Promise<void> {
+  if (!(await tablaExiste(dataSource, 'avisos_repartidor'))) {
+    console.log('[migrations] Creando tabla avisos_repartidor...');
+    await dataSource.query(`
+      CREATE TABLE \`avisos_repartidor\` (
+        \`id\` INT NOT NULL AUTO_INCREMENT,
+        \`repartidor_id\` INT NOT NULL,
+        \`tipo\` VARCHAR(40) NOT NULL DEFAULT 'cobro_historico',
+        \`titulo\` VARCHAR(160) NOT NULL,
+        \`mensaje\` TEXT NOT NULL,
+        \`monto\` DECIMAL(12,2) NULL,
+        \`cliente_id\` INT NULL,
+        \`cobro_id\` INT NULL,
+        \`cobrado_por_repartidor_id\` INT NULL,
+        \`leido\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`creado_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        KEY \`idx_avisos_repartidor_leido\` (\`repartidor_id\`, \`leido\`, \`creado_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+  } else {
+    console.log('[migrations] avisos_repartidor ya existe.');
+  }
+}
+
 export async function runPendingMigrations(dataSource: DataSource): Promise<void> {
   const base = await obtenerNombreBase(dataSource);
   console.log(`[migrations] Verificando esquema en base de datos: ${base}`);
@@ -526,6 +594,9 @@ export async function runPendingMigrations(dataSource: DataSource): Promise<void
   await migrarPagosRepartidor(dataSource);
   await migrarCobrosSoftDelete(dataSource);
   await migrarPagosRepartidorSoftDelete(dataSource);
+  await migrarColorPinRepartidor(dataSource);
+  await migrarCobradoPorCobros(dataSource);
+  await migrarAvisosRepartidor(dataSource);
 
   console.log('[migrations] Esquema verificado correctamente.');
 }
