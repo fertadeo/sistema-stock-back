@@ -161,12 +161,18 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         });
       }
 
+      const colorPin =
+        typeof nuevo_repartidor.color_pin === 'string'
+          ? nuevo_repartidor.color_pin.trim()
+          : undefined;
+
       const repartidorService = new RepartidorService();
       repartidorCreado = await repartidorService.crearRepartidor({
         nombre: nombreRep,
         telefono: telefonoRep || '-',
         zona_reparto: zonaRep || '-',
         activo: true,
+        color_pin: colorPin || null,
       });
       repartidorIdValidado = String(repartidorCreado.id);
     } else if (role === USER_ROLES.REPARTIDOR) {
@@ -203,6 +209,9 @@ export const createUser = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'Repartidor no encontrado') {
+      return res.status(400).json({ message: error.message });
+    }
+    if (error instanceof Error && error.message.includes('color_pin')) {
       return res.status(400).json({ message: error.message });
     }
     console.error(error);

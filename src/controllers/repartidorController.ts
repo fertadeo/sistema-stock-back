@@ -11,9 +11,11 @@ export class RepartidorController {
             const repartidor = await this.repartidorService.crearRepartidor(req.body);
             res.status(201).json(repartidor);
         } catch (error) {
-            res.status(500).json({
-                message: "Error al crear repartidor",
-                error: error instanceof Error ? error.message : 'Error desconocido'
+            const message = error instanceof Error ? error.message : 'Error desconocido';
+            const status = message.includes('color_pin') ? 400 : 500;
+            res.status(status).json({
+                message: status === 500 ? "Error al crear repartidor" : message,
+                error: message,
             });
         }
     }
@@ -50,9 +52,14 @@ export class RepartidorController {
             const repartidor = await this.repartidorService.actualizarRepartidor(id, req.body);
             res.json(repartidor);
         } catch (error) {
-            res.status(500).json({
-                message: "Error al actualizar repartidor",
-                 error: error instanceof Error ? error.message : 'Error desconocido'
+            const message = error instanceof Error ? error.message : 'Error desconocido';
+            const status =
+                message.includes('color_pin') || message === 'Repartidor no encontrado'
+                    ? (message === 'Repartidor no encontrado' ? 404 : 400)
+                    : 500;
+            res.status(status).json({
+                message: status === 500 ? "Error al actualizar repartidor" : message,
+                error: message,
             });
         }
     }

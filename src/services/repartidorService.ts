@@ -2,6 +2,20 @@ import { AppDataSource } from "../config/database";
 import { Repartidor } from "../entities/Repartidor";
 import { REPARTIDOR_PIN_COLORS } from "../constants/repartidorPinColors";
 
+function normalizarColorPin(value: unknown): string | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value !== 'string') {
+        throw new Error('color_pin inválido');
+    }
+    const color = value.trim();
+    if (!color) return null;
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+        throw new Error('color_pin debe ser un hex #RRGGBB');
+    }
+    return color.toUpperCase();
+}
+
 export class RepartidorService {
     private repartidorRepository = AppDataSource.getRepository(Repartidor);
 
@@ -21,8 +35,12 @@ export class RepartidorService {
     }
 
     async crearRepartidor(data: Partial<Repartidor>): Promise<Repartidor> {
-        const color_pin = data.color_pin?.trim() || (await this.siguienteColorPin());
-        const repartidor = this.repartidorRepository.create({ ...data, color_pin });
+        const colorElegido = normalizarColorPin(data.color_pin);
+        const color_pin = colorElegido || (await this.siguienteColorPin());
+        const repartidor = this.repartidorRepository.create({
+            ...data,
+            color_pin,
+        });
         return await this.repartidorRepository.save(repartidor);
     }
 
@@ -47,9 +65,15 @@ export class RepartidorService {
 
     async actualizarRepartidor(id: string, data: Partial<Repartidor>): Promise<Repartidor> {
         const repartidor = await this.obtenerRepartidorPorId(id);
-        
-        Object.assign(repartidor, data);
-        
+
+        const { color_pin, ...resto } = data;
+        Object.assign(repartidor, resto);
+
+        if (color_pin !== undefined) {
+            const normalizado = normalizarColorPin(color_pin);
+            repartidor.color_pin = normalizado ?? null;
+        }
+
         return await this.repartidorRepository.save(repartidor);
     }
 
