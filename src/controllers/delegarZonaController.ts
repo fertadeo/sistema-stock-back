@@ -7,7 +7,7 @@ export const delegarZona = async (req: AuthRequest, res: Response) => {
     const { zona_id, repartidor_origen, repartidor_destino, cliente_ids } = req.body;
     const resultado = await delegarZonaService.delegarZona({
       zona_id: zona_id != null ? Number(zona_id) : null,
-      repartidor_origen,
+      repartidor_origen: repartidor_origen || null,
       repartidor_destino,
       cliente_ids: Array.isArray(cliente_ids) ? cliente_ids.map(Number) : [],
     });
