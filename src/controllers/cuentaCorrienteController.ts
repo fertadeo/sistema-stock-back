@@ -281,6 +281,30 @@ export const getClientesDeudores = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const postDeudasDelegacion = async (req: AuthRequest, res: Response) => {
+  try {
+    const rawIds = Array.isArray(req.body?.cliente_ids) ? req.body.cliente_ids : [];
+    const clienteIds = rawIds.map((id: unknown) => Number(id)).filter((id: number) => id > 0);
+    if (clienteIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debés enviar al menos un cliente_id',
+      });
+    }
+    if (clienteIds.length > 2000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Máximo 2000 clientes por consulta',
+      });
+    }
+
+    const data = await cuentaCorrienteService.obtenerDeudasDelegacion(clienteIds);
+    res.json({ success: true, data });
+  } catch (error) {
+    responderError(res, error, 'Error al obtener deudas para delegación');
+  }
+};
+
 export const getCarterasDeudores = async (req: AuthRequest, res: Response) => {
   try {
     const { obtenerRepartidorNombreDeUsuario } = await import(

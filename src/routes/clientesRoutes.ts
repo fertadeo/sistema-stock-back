@@ -20,6 +20,7 @@ import {
   createCobroPorCliente,
   getClientesDeudores,
   getCarterasDeudores,
+  postDeudasDelegacion,
   getCobrosPorCliente,
   getCuentaCorriente,
   getCuentaCorrienteResumen,
@@ -46,6 +47,11 @@ router.post(
   '/delegar-zona',
   requireRole(USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN),
   delegarZona
+);
+router.post(
+  '/deudas-delegacion',
+  requireRole(USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN),
+  postDeudasDelegacion
 );
 router.get('/fiados-diario', getResumenFiadosPorFecha);
 router.get('/clientes-por-mes', getClientesPorMes);

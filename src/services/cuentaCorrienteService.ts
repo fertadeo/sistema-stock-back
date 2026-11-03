@@ -606,6 +606,151 @@ export class CuentaCorrienteService {
     return { propia, por_otro };
   }
 
+  /**
+   * Deuda de cada cliente con su repartidor actual (el “anterior” al migrar zona).
+   * Sirve para la hoja Excel de delegación.
+   */
+  async obtenerDeudasDelegacion(clienteIds: number[]) {
+    const ids = Array.from(
+      new Set(clienteIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))
+    );
+    if (ids.length === 0) return [];
+
+    const clientes = await clienteRepository
+      .createQueryBuilder('c')
+      .where('c.id IN (:...ids)', { ids })
+      .getMany();
+    if (clientes.length === 0) return [];
+
+    const placeholders = ids.map(() => '?').join(',');
+    const debitosSql = `
+      SELECT
+        CAST(v.cliente_id AS UNSIGNED) AS cliente_id,
+        CAST(NULLIF(TRIM(v.repartidor_id), '') AS UNSIGNED) AS dueno_id,
+        SUM(CAST(v.saldo_monto AS DECIMAL(12,2))) AS total_debitos
+      FROM venta v
+      WHERE v.saldo = 1
+        AND v.cliente_id IS NOT NULL
+        AND v.cliente_id <> ''
+        AND CAST(v.cliente_id AS UNSIGNED) IN (${placeholders})
+        AND CAST(v.saldo_monto AS DECIMAL(12,2)) > 0
+      GROUP BY CAST(v.cliente_id AS UNSIGNED), CAST(NULLIF(TRIM(v.repartidor_id), '') AS UNSIGNED)
+    `;
+    const creditosSql = `
+      SELECT
+        cob.cliente_id AS cliente_id,
+        cob.repartidor_id AS dueno_id,
+        SUM(cob.monto) AS total_creditos
+      FROM cobros cob
+      WHERE cob.activo = 1
+        AND cob.cliente_id IN (${placeholders})
+      GROUP BY cob.cliente_id, cob.repartidor_id
+    `;
+
+    type AggRow = {
+      cliente_id: number;
+      dueno_id: number | null;
+      total_debitos?: number;
+      total_creditos?: number;
+    };
+
+    const debitos = await queryWithRetry<AggRow[]>(debitosSql, ids);
+    let creditos: AggRow[] = [];
+    try {
+      creditos = await queryWithRetry<AggRow[]>(creditosSql, ids);
+    } catch (error) {
+      if (!esErrorTablaFaltante(error, 'cobros')) throw error;
+      creditos = [];
+    }
+
+    const saldoPorClave = new Map<
+      string,
+      { cliente_id: number; dueno_id: number | null; debitos: number; creditos: number }
+    >();
+    for (const row of debitos) {
+      const clienteId = Number(row.cliente_id);
+      const duenoId =
+        row.dueno_id == null || Number.isNaN(Number(row.dueno_id))
+          ? null
+          : Number(row.dueno_id);
+      const key = `${clienteId}:${duenoId ?? 'null'}`;
+      const actual = saldoPorClave.get(key) || {
+        cliente_id: clienteId,
+        dueno_id: duenoId,
+        debitos: 0,
+        creditos: 0,
+      };
+      actual.debitos += Number(row.total_debitos || 0);
+      saldoPorClave.set(key, actual);
+    }
+    for (const row of creditos) {
+      const clienteId = Number(row.cliente_id);
+      const duenoId =
+        row.dueno_id == null || Number.isNaN(Number(row.dueno_id))
+          ? null
+          : Number(row.dueno_id);
+      const key = `${clienteId}:${duenoId ?? 'null'}`;
+      const actual = saldoPorClave.get(key) || {
+        cliente_id: clienteId,
+        dueno_id: duenoId,
+        debitos: 0,
+        creditos: 0,
+      };
+      actual.creditos += Number(row.total_creditos || 0);
+      saldoPorClave.set(key, actual);
+    }
+
+    const { Repartidor } = await import('../entities/Repartidor');
+    const repartidores = await AppDataSource.getRepository(Repartidor).find({
+      where: { activo: true },
+    });
+    const idPorNombre = new Map<string, number>();
+    for (const r of repartidores) {
+      const nom = (r.nombre || '').trim();
+      if (!nom) continue;
+      idPorNombre.set(nom.toLowerCase(), r.id);
+    }
+
+    const saldoDe = (clienteId: number, duenoId: number | null) => {
+      const key = `${clienteId}:${duenoId ?? 'null'}`;
+      const item = saldoPorClave.get(key);
+      if (!item) return 0;
+      return redondearMonto(item.debitos - item.creditos);
+    };
+
+    const saldoTotalCliente = (clienteId: number) => {
+      let total = 0;
+      for (const item of saldoPorClave.values()) {
+        if (item.cliente_id !== clienteId) continue;
+        total += item.debitos - item.creditos;
+      }
+      return redondearMonto(total);
+    };
+
+    return clientes.map((cliente) => {
+      const repartidorAnterior = (cliente.repartidor || '').trim() || null;
+      const duenoId = repartidorAnterior
+        ? idPorNombre.get(repartidorAnterior.toLowerCase()) ?? null
+        : null;
+
+      let deuda = 0;
+      if (duenoId != null) {
+        deuda = Math.max(0, saldoDe(cliente.id, duenoId));
+        // Fiados sin dueño explícito también deben cobrarse al migrar
+        deuda = redondearMonto(deuda + Math.max(0, saldoDe(cliente.id, null)));
+      } else {
+        deuda = Math.max(0, saldoTotalCliente(cliente.id));
+      }
+
+      return {
+        cliente_id: cliente.id,
+        repartidor_anterior: repartidorAnterior,
+        repartidor_anterior_id: duenoId,
+        deuda_anterior: deuda,
+      };
+    });
+  }
+
   async obtenerResumenPorCliente(clienteId: number) {
     // Secuencial: evita ocupar 3 conexiones del pool a la vez por request
     const cliente = await this.obtenerClienteBase(clienteId);
