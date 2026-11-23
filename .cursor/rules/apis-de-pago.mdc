@@ -1,0 +1,25 @@
+---
+description: Prohibición de bugs de costo — APIs de pago (Google Maps, etc.)
+alwaysApply: true
+---
+
+# APIs de pago — no repetir el incidente de costos
+
+En noviembre 2026, un loop de **Google Directions (1 llamada por cliente)** desde este backend generó **cargos de cientos de USD**.
+
+## Prohibido
+
+- Cualquier `fetch` / HTTP a `maps.googleapis.com` (Directions, Geocoding, Places, Distance Matrix).
+- Endpoints que hagan **1 llamada Google por cliente/tramo** dentro de un loop.
+- Geocoding batch de clientes pendientes.
+- Reactivar el proxy de Maps sin pedido explícito + kill switch + presupuesto.
+
+## Estado actual
+
+- `src/services/googleMapsService.ts` es un stub que **no llama a Google**.
+- `/api/rutas/directions` y `/api/geocode/*` responden **503**.
+- `ENABLE_GOOGLE_MAPS` debe quedar ausente o distinto de `true`.
+
+## Antes de mergear cambios en mapas
+
+Ejecutar: `npm run assert:no-google-maps`

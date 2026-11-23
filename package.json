@@ -10,7 +10,9 @@
     "migrate": "ts-node src/scripts/migrate.ts",
     "migrate:prod": "NODE_ENV=production ts-node src/scripts/migrate.ts",
     "clean": "rimraf dist && dist build output",
-    "build": " rimraf run clean && tsc"
+    "assert:no-google-maps": "node scripts/assert-no-google-maps-billing.js",
+    "prebuild": "npm run assert:no-google-maps",
+    "build": "npm run assert:no-google-maps && rimraf dist && tsc"
   },
   "author": "Fer Tadeo",
   "license": "ISC",
