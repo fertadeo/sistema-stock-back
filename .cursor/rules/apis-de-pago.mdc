@@ -16,9 +16,10 @@ En noviembre 2026, un loop de **Google Directions (1 llamada por cliente)** desd
 
 ## Estado actual
 
+- `src/security/bloquearGoogleMaps.ts` se importa primero y rechaza cualquier salida a Google Maps. Descarta `GOOGLE_MAPS_API_KEY` y `ENABLE_GOOGLE_MAPS`. Si el bloqueo no queda instalado, el proceso no arranca.
 - `src/services/googleMapsService.ts` es un stub que **no llama a Google**.
 - `/api/rutas/directions` y `/api/geocode/*` responden **503**.
-- `ENABLE_GOOGLE_MAPS` debe quedar ausente o distinto de `true`.
+- Ninguna variable de entorno vuelve a habilitar las llamadas.
 
 ## Antes de mergear cambios en mapas
 

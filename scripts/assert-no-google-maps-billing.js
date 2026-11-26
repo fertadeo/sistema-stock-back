@@ -1,5 +1,5 @@
 /**
- * Falla si el código fuente vuelve a pegarle a maps.googleapis.com.
+ * Falla el build si la API puede volver a llamar a Google Maps.
  * Uso: npm run assert:no-google-maps
  */
 const fs = require('fs');
@@ -8,12 +8,16 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..', 'src');
 const FORBIDDEN = [
   'maps.googleapis.com',
-  'maps.google.com/maps/api',
+  'maps.google.com',
+  'places.googleapis.com',
+  'routes.googleapis.com',
+  'roads.googleapis.com',
+  'addressvalidation.googleapis.com',
+  'tile.googleapis.com',
 ];
 
-const ALLOWED_BASENAMES = new Set([
-  // stubs / comentarios de bloqueo pueden mencionar el host en strings de docs
-]);
+const BLOCKER = path.join(ROOT, 'security', 'bloquearGoogleMaps.ts');
+const INDEX = path.join(ROOT, 'index.ts');
 
 function walk(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
@@ -25,38 +29,72 @@ function walk(dir, out = []) {
   return out;
 }
 
+function esComentario(line) {
+  const trimmed = line.trim();
+  return (
+    trimmed.startsWith('//') ||
+    trimmed.startsWith('*') ||
+    trimmed.startsWith('/*')
+  );
+}
+
 const offenders = [];
+
+if (!fs.existsSync(BLOCKER)) {
+  offenders.push('falta src/security/bloquearGoogleMaps.ts');
+}
+
+const index = fs.existsSync(INDEX) ? fs.readFileSync(INDEX, 'utf8') : '';
+const primerImport = index
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .find((line) => line.startsWith('import '));
+if (primerImport !== "import './security/bloquearGoogleMaps';") {
+  offenders.push(
+    "src/index.ts: el primer import debe ser './security/bloquearGoogleMaps'"
+  );
+}
+
 for (const file of walk(ROOT)) {
-  const base = path.basename(file);
-  if (ALLOWED_BASENAMES.has(base)) continue;
   const text = fs.readFileSync(file, 'utf8');
-  // Permitir menciones solo en comentarios de bloqueo, no en URLs de fetch
+  const esBloqueo = path.resolve(file) === path.resolve(BLOCKER);
   const lines = text.split(/\r?\n/);
+
   lines.forEach((line, idx) => {
-    const trimmed = line.trim();
-    const isComment =
-      trimmed.startsWith('//') ||
-      trimmed.startsWith('*') ||
-      trimmed.startsWith('/*');
+    if (esComentario(line)) return;
+    const where = `${file}:${idx + 1}`;
+
+    if (/process\.env\.(GOOGLE_MAPS_API_KEY|ENABLE_GOOGLE_MAPS|GOOGLE_MAPS_KEY)\b/.test(line)) {
+      offenders.push(`${where}: no leer claves de Google Maps desde el entorno`);
+    }
+
     for (const needle of FORBIDDEN) {
       if (!line.includes(needle)) continue;
-      // URL activa (fetch/http) = fallo; comentario documental = ok
-      if (isComment) continue;
-      if (/https?:\/\//.test(line) || /fetch\s*\(/.test(line) || /`https/.test(line)) {
-        offenders.push(`${file}:${idx + 1}: ${trimmed.slice(0, 120)}`);
+      if (!esBloqueo) {
+        offenders.push(`${where}: host de Google Maps fuera del bloqueo de red`);
+        continue;
+      }
+      if (/https?:\/\//.test(line) || /fetch\s*\(/.test(line)) {
+        offenders.push(
+          `${where}: el bloqueo no puede armar una URL completa de Google en la misma línea`
+        );
       }
     }
   });
+
+  if (
+    /routes\/(geocode|rutasRoutes)\.ts$/.test(file.replace(/\\/g, '/')) &&
+    /googleMapsService/.test(text)
+  ) {
+    offenders.push(`${file}: la ruta no debe importar googleMapsService`);
+  }
 }
 
 if (offenders.length > 0) {
-  console.error('FATAL: se detectaron llamadas/URLs a Google Maps (riesgo de facturación):\n');
-  for (const o of offenders) console.error(' -', o);
-  console.error(
-    '\nNo reactivar Maps sin kill switch, presupuesto y sin loops 1-llamada-por-cliente.'
-  );
+  console.error('FATAL: la API podría volver a facturar Google Maps:\n');
+  for (const item of offenders) console.error(' -', item);
   process.exit(1);
 }
 
-console.log('OK: no hay URLs activas a maps.googleapis.com en src/');
+console.log('OK: la API no tiene URLs activas a Google Maps y el bloqueo de red está primero');
 process.exit(0);
