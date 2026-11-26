@@ -30,7 +30,7 @@ module.exports = {
         DB_NAME: 'soderia',
         DB_POOL_SIZE: '2',
         JWT_SECRET: 'tu_jwt_secret',
-        GOOGLE_MAPS_API_KEY: 'tu_api_key',
+        // NO definir GOOGLE_MAPS_API_KEY. El proceso la descarta y bloquea la red.
         FRONTEND_URL: 'https://sistema.soderiadonjavier.com',
         CORS_ORIGINS: 'https://sistema.soderiadonjavier.com',
         // Push al celular del repartidor (PWA Android). NO envía correos.

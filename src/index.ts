@@ -1,3 +1,4 @@
+import './security/bloquearGoogleMaps';
 import 'reflect-metadata';
 import express from 'express';
 import colors from 'colors';

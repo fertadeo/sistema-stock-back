@@ -10,7 +10,7 @@
     "migrate": "ts-node src/scripts/migrate.ts",
     "migrate:prod": "NODE_ENV=production ts-node src/scripts/migrate.ts",
     "clean": "rimraf dist && dist build output",
-    "assert:no-google-maps": "node scripts/assert-no-google-maps-billing.js",
+    "assert:no-google-maps": "node scripts/assert-no-google-maps-billing.js && node --experimental-strip-types scripts/test-bloquear-google-maps.mts",
     "prebuild": "npm run assert:no-google-maps",
     "build": "npm run assert:no-google-maps && rimraf dist && tsc"
   },

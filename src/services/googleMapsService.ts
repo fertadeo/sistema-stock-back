@@ -1,36 +1,19 @@
 /**
- * =============================================================================
- * GOOGLE MAPS — BLOQUEADO (incidente de costos, nov 2026)
- * =============================================================================
- * Un loop de Directions (1 request por cliente/tramo) generó cargos de cientos
- * de USD. Este módulo NO debe volver a hacer HTTP a maps.googleapis.com.
- *
- * Para reactivar (solo con pedido explícito del dueño del proyecto):
- * 1. ENABLE_GOOGLE_MAPS=true
- * 2. GOOGLE_MAPS_MAX_CALLS_PER_PROCESS con un tope bajo (ej. 20)
- * 3. Nunca llamar getDirections/geocode en un for-por-cliente
- * 4. Preferir batch único o cálculo local (Haversine)
- * =============================================================================
+ * GOOGLE MAPS — BLOQUEADO (incidente de costos, nov 2026).
+ * Un loop de Directions (1 request por cliente) generó más de 200.000 solicitudes.
+ * Estas funciones no tienen URL ni clave. El corte de red está en
+ * src/security/bloquearGoogleMaps.ts, importado antes que el resto del proceso.
+ * Ninguna variable de entorno vuelve a habilitar las llamadas.
  */
-
-const ENABLED = process.env.ENABLE_GOOGLE_MAPS === 'true';
-const MAX_CALLS = Math.max(
-  0,
-  parseInt(process.env.GOOGLE_MAPS_MAX_CALLS_PER_PROCESS || '0', 10) || 0
-);
 
 let callsThisProcess = 0;
 
 const BLOQUEADO =
   'Google Maps API deshabilitada (bloqueo de costos). No se realizan llamadas a Google.';
 
-function assertPuedeLlamar(_operacion: string): never {
-  // Incluso con ENABLE_GOOGLE_MAPS=true, el código de red fue eliminado a propósito.
-  // Reactivar requiere reimplementar con batch + presupuesto, no pegar el loop viejo.
+function assertPuedeLlamar(operacion: string): never {
   callsThisProcess += 1;
-  console.error(
-    `[googleMaps] intento bloqueado (enable=${ENABLED}, max=${MAX_CALLS}, count=${callsThisProcess})`
-  );
+  console.error(`[googleMaps] intento bloqueado (${operacion}, count=${callsThisProcess})`);
   throw new Error(BLOQUEADO);
 }
 
